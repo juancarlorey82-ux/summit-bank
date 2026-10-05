@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 209 40% 15%;
+    --foreground: 36 60% 95%;
+    --card: 210 38% 18%;
+    --card-foreground: 36 60% 95%;
+    --popover: 210 40% 13%;
+    --popover-foreground: 36 60% 95%;
+    --primary: 37 33% 53%;
+    --primary-foreground: 209 45% 10%;
+    --secondary: 209 32% 22%;
+    --secondary-foreground: 36 60% 92%;
+    --muted: 209 30% 22%;
+    --muted-foreground: 36 24% 72%;
+    --accent: 37 30% 60%;
+    --accent-foreground: 209 45% 10%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 209 28% 26%;
+    --input: 209 28% 26%;
+    --ring: 37 33% 53%;
+    --radius: 0.5rem;
+    --sidebar-background: 210 42% 12%;
+    --sidebar-foreground: 36 60% 92%;
+    --sidebar-primary: 37 33% 53%;
+    --sidebar-primary-foreground: 209 45% 10%;
+    --sidebar-accent: 209 32% 20%;
+    --sidebar-accent-foreground: 36 60% 92%;
+    --sidebar-border: 209 28% 24%;
+    --sidebar-ring: 37 33% 53%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  ::selection {
+    background: hsl(37 33% 53% / 0.35);
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .font-display {
+    font-family: "Marcellus", "Times New Roman", serif;
+  }
+  .tracking-mega {
+    letter-spacing: 0.32em;
+  }
+  .text-cream {
+    color: #fce1b6;
+  }
+  .text-gold {
+    color: #af915f;
+  }
+  .bg-gold {
+    background-color: #af915f;
+  }
+  .border-gold {
+    border-color: #af915f;
+  }
+  .bg-navy-deep {
+    background-color: #0d1a27;
+  }
+  .bg-navy-panel {
+    background-color: #162638;
+  }
+  .gold-rule {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(37 33% 53% / 0.6),
+      transparent
+    );
+    height: 1px;
+  }
+  .hero-glow {
+    background:
+      radial-gradient(ellipse 80% 55% at 50% -10%, hsl(37 33% 53% / 0.16), transparent 65%),
+      radial-gradient(ellipse 60% 50% at 85% 110%, hsl(209 60% 40% / 0.18), transparent 70%);
+  }
+  .fine-lines {
+    background-image: repeating-linear-gradient(
+      90deg,
+      hsl(209 40% 60% / 0.05) 0px,
+      hsl(209 40% 60% / 0.05) 1px,
+      transparent 1px,
+      transparent 72px
+    );
+  }
+}
+
+@keyframes seal-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-seal {
+  animation: seal-rotate 22s linear infinite;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0d1a27;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a405a;
+  border-radius: 5px;
+  border: 2px solid #0d1a27;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #af915f;
+}

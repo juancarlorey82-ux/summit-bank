@@ -1,0 +1,11 @@
+{
+  "name": "summit-private-bank",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build",
+    "start": "npm --prefix app run start",
+    "check": "npm --prefix app run check"
+  }
+}
