@@ -374,6 +374,24 @@
       "isContactless": true,
       "isInternational": true,
       "createdAt": "2026-09-20T21:43:32.370Z"
+    },
+    {
+      "userId": 1,
+      "accountId": 1,
+      "cardNumber": "4532 •••• •••• 8910",
+      "fullNumber": "4532881900218910",
+      "cardHolder": "LORD STERLING (ADMIN)",
+      "expiry": "12/29",
+      "cvv": "782",
+      "tier": "Obsidian Reserve",
+      "type": "physical",
+      "status": "active",
+      "spendingLimit": 250000,
+      "spendingCurrent": 14280,
+      "isContactless": true,
+      "isInternational": true,
+      "id": 3,
+      "createdAt": "2026-10-06T00:15:16.836Z"
     }
   ],
   "vaults": [

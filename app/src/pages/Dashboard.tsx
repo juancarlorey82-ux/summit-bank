@@ -158,6 +158,14 @@ export default function Dashboard() {
     onError: (e) => setActionError(e.message),
   });
 
+  const toggleFreezeMutation = trpc.bank.toggleFreezeCard.useMutation({
+    onSuccess: async (data) => {
+      await utils.bank.cards.invalidate();
+      setNotice(data.status === "frozen" ? "Titanium metal card locked & frozen." : "Titanium metal card unfrozen & active.");
+    },
+    onError: (e) => setActionError(e.message),
+  });
+
   const vaultDeposit = trpc.bank.vaultDeposit.useMutation({
     onSuccess: onSuccess("Funds transferred into wealth reserve vault."),
     onError: (e) => setActionError(e.message),
@@ -577,8 +585,13 @@ export default function Dashboard() {
                     </div>
                     <div className="text-right">
                       <div className="text-[9px] uppercase tracking-[0.2em] text-zinc-400">Status</div>
-                      <span className="text-[10px] uppercase font-semibold text-emerald-400">
-                        {primaryCard?.status ?? "Active"}
+                      <span
+                        className={cn(
+                          "text-[10px] uppercase font-semibold",
+                          primaryCard?.status === "frozen" ? "text-sky-400 font-bold" : "text-emerald-400",
+                        )}
+                      >
+                        {primaryCard?.status === "frozen" ? "Frozen" : "Active"}
                       </span>
                     </div>
                   </div>
@@ -613,6 +626,17 @@ export default function Dashboard() {
                   </div>
                 </>
               )}
+
+              {/* Frosted security overlay when frozen */}
+              {primaryCard?.status === "frozen" && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/75 backdrop-blur-[2px] rounded-xl pointer-events-none border border-sky-400/50">
+                  <div className="flex items-center gap-1.5 px-3 py-1 bg-sky-950/90 border border-sky-400 text-sky-300 font-mono text-[11px] font-bold tracking-widest uppercase rounded shadow-lg">
+                    <Lock className="h-3 w-3" />
+                    CARD FROZEN
+                  </div>
+                  <span className="text-[9px] text-zinc-300 mt-1 uppercase tracking-wider">Payments & NFC Suspended</span>
+                </div>
+              )}
             </div>
 
             {/* Card Controls & Spending Progress */}
@@ -634,21 +658,26 @@ export default function Dashboard() {
 
               <div className="flex items-center justify-between pt-1">
                 <button
+                  type="button"
+                  id="btn-freeze-card"
+                  disabled={toggleFreezeMutation.isPending || updateCardMutation.isPending}
                   onClick={() => {
-                    if (!primaryCard) return;
-                    const next = primaryCard.status === "active" ? "frozen" : "active";
-                    updateCardMutation.mutate({ cardId: primaryCard.id, status: next });
+                    toggleFreezeMutation.mutate({ cardId: primaryCard?.id });
                   }}
                   className={cn(
-                    "inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-medium px-3 py-1.5 border transition-colors",
+                    "inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-medium px-3.5 py-1.5 border transition-all cursor-pointer",
                     primaryCard?.status === "frozen"
-                      ? "border-sky-400 text-sky-400 bg-sky-400/10 hover:bg-sky-400/20"
-                      : "border-border text-muted-foreground hover:border-gold hover:text-cream",
+                      ? "border-sky-400 text-sky-400 bg-sky-400/15 hover:bg-sky-400/25 shadow-[0_0_15px_rgba(56,189,248,0.2)]"
+                      : "border-border text-muted-foreground hover:border-gold hover:text-cream hover:bg-navy-panel",
                   )}
                 >
-                  {primaryCard?.status === "frozen" ? (
+                  {toggleFreezeMutation.isPending ? (
                     <>
-                      <Unlock className="h-3.5 w-3.5" /> Unfreeze Card
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-gold" /> Processing...
+                    </>
+                  ) : primaryCard?.status === "frozen" ? (
+                    <>
+                      <Unlock className="h-3.5 w-3.5 text-sky-400" /> Unfreeze Card
                     </>
                   ) : (
                     <>

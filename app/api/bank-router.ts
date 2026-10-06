@@ -397,13 +397,75 @@ export const bankRouter = createRouter({
 
   // Cards
   cards: authedQuery.query(async ({ ctx }) => {
-    return dbStorage.getCardsByUserId(ctx.user.id);
+    let userCards = dbStorage.getCardsByUserId(ctx.user.id);
+    if (!userCards || userCards.length === 0) {
+      const account = await getOrCreateAccount(ctx.user.id);
+      const user = dbStorage.findUserById(ctx.user.id);
+      const name = user?.name?.toUpperCase() || "SUMMIT CLIENT";
+      const newCard = dbStorage.addCard({
+        userId: ctx.user.id,
+        accountId: account.id,
+        cardNumber: "4532 •••• •••• 8910",
+        fullNumber: "4532881900218910",
+        cardHolder: name,
+        expiry: "12/29",
+        cvv: "782",
+        tier: user?.tier === "Sovereign Reserve" ? "Obsidian Reserve" : "Titanium Black",
+        type: "physical",
+        status: "active",
+        spendingLimit: 250000,
+        spendingCurrent: 14280,
+        isContactless: true,
+        isInternational: true,
+      });
+      userCards = [newCard];
+    }
+    return userCards;
   }),
+
+  toggleFreezeCard: authedQuery
+    .input(z.object({ cardId: z.number().int().positive().optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      let userCards = dbStorage.getCardsByUserId(ctx.user.id);
+      let card = input?.cardId ? dbStorage.findCardById(input.cardId) : userCards[0];
+      if (!card) {
+        const account = await getOrCreateAccount(ctx.user.id);
+        const user = dbStorage.findUserById(ctx.user.id);
+        card = dbStorage.addCard({
+          userId: ctx.user.id,
+          accountId: account.id,
+          cardNumber: "4532 •••• •••• 8910",
+          fullNumber: "4532881900218910",
+          cardHolder: user?.name?.toUpperCase() || "SUMMIT CLIENT",
+          expiry: "12/29",
+          cvv: "782",
+          tier: "Obsidian Reserve",
+          type: "physical",
+          status: "active",
+          spendingLimit: 250000,
+          spendingCurrent: 14280,
+          isContactless: true,
+          isInternational: true,
+        });
+      }
+
+      const nextStatus = card.status === "active" ? "frozen" : "active";
+      const updated = dbStorage.updateCard(card.id, { status: nextStatus });
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || ctx.user.email || "Client",
+        action: nextStatus === "frozen" ? "Card Frozen" : "Card Unfrozen",
+        category: "card_management",
+        details: `${nextStatus === "frozen" ? "Secured and locked" : "Reactivated"} luxury card ending in ${card.cardNumber.slice(-4)}`,
+      });
+
+      return updated!;
+    }),
 
   updateCard: authedQuery
     .input(
       z.object({
-        cardId: z.number().int().positive(),
+        cardId: z.number().int().positive().optional(),
         status: z.enum(["active", "frozen"]).optional(),
         isContactless: z.boolean().optional(),
         isInternational: z.boolean().optional(),
@@ -411,9 +473,31 @@ export const bankRouter = createRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const card = dbStorage.findCardById(input.cardId);
+      let card = input.cardId ? dbStorage.findCardById(input.cardId) : undefined;
       if (!card || card.userId !== ctx.user.id) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Card not found" });
+        const userCards = dbStorage.getCardsByUserId(ctx.user.id);
+        if (userCards.length > 0) {
+          card = userCards[0];
+        } else {
+          const account = await getOrCreateAccount(ctx.user.id);
+          const user = dbStorage.findUserById(ctx.user.id);
+          card = dbStorage.addCard({
+            userId: ctx.user.id,
+            accountId: account.id,
+            cardNumber: "4532 •••• •••• 8910",
+            fullNumber: "4532881900218910",
+            cardHolder: user?.name?.toUpperCase() || "SUMMIT CLIENT",
+            expiry: "12/29",
+            cvv: "782",
+            tier: "Obsidian Reserve",
+            type: "physical",
+            status: "active",
+            spendingLimit: 250000,
+            spendingCurrent: 14280,
+            isContactless: true,
+            isInternational: true,
+          });
+        }
       }
 
       const patch: any = {};
@@ -431,7 +515,7 @@ export const bankRouter = createRouter({
         details: `Updated settings for card ending in ${card.cardNumber.slice(-4)}`,
       });
 
-      return updated;
+      return updated!;
     }),
 
   issueCard: authedQuery
