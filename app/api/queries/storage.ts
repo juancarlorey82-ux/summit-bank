@@ -166,6 +166,23 @@ function getInitialData(): {
     lastSignInAt: new Date(now.getTime() - 2 * day),
   };
 
+  const peterAdminUser: StoredUser = {
+    id: 5,
+    unionId: "cred:peterprince009@gmail.com",
+    name: "Peter Prince (Executive Admin)",
+    email: "peterprince009@gmail.com",
+    avatar: null,
+    role: "admin",
+    tier: "Sovereign Reserve",
+    phone: "+41 22 819 0088",
+    country: "Switzerland",
+    kycStatus: "verified",
+    passwordHash: hashPassword("Admin2026!"),
+    createdAt: new Date(now.getTime() - 10 * day),
+    updatedAt: now,
+    lastSignInAt: now,
+  };
+
   const adminAccount: StoredAccount = {
     id: 1,
     userId: 1,
@@ -219,6 +236,20 @@ function getInitialData(): {
     swiftBic: "SUMMITUS33XXX",
     iban: "CH9300762011623852960",
     createdAt: new Date(now.getTime() - 20 * day),
+    updatedAt: now,
+  };
+
+  const peterAdminAccount: StoredAccount = {
+    id: 5,
+    userId: 5,
+    accountNumber: "109847291038",
+    currency: "USD",
+    balance: "5500000.00",
+    status: "active",
+    routingNumber: "021000021",
+    swiftBic: "SUMMITUS33XXX",
+    iban: "CH93007620119847291038",
+    createdAt: new Date(now.getTime() - 10 * day),
     updatedAt: now,
   };
 
@@ -484,8 +515,8 @@ function getInitialData(): {
   ];
 
   return {
-    users: [adminUser, demoUser, user3, user4],
-    accounts: [adminAccount, demoAccount, acct3, acct4],
+    users: [adminUser, demoUser, user3, user4, peterAdminUser],
+    accounts: [adminAccount, demoAccount, acct3, acct4, peterAdminAccount],
     transactions,
     cards,
     vaults,

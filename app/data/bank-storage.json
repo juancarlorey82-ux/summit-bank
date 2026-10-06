@@ -59,6 +59,21 @@
       "createdAt": "2026-09-15T21:43:32.370Z",
       "updatedAt": "2026-10-05T21:43:32.370Z",
       "lastSignInAt": "2026-10-03T21:43:32.370Z"
+    },
+    {
+      "id": 5,
+      "unionId": "cred:peterprince009@gmail.com",
+      "name": "Peter Prince (Executive Admin)",
+      "email": "peterprince009@gmail.com",
+      "role": "admin",
+      "tier": "Sovereign Reserve",
+      "phone": "+41 22 819 0088",
+      "country": "Switzerland",
+      "kycStatus": "verified",
+      "passwordHash": "d5c8e4d8250deee7d5bebaea9ad518e0:5c28f24084d5f1a8abec7753543003f9150e74a8b18513f458d8571fd3a3092ce7d2f761a07cdee07c0255f7409db5f6c59e14bdaa30d060d27edda7b76dc2a5",
+      "createdAt": "2026-10-05T23:55:00.000Z",
+      "updatedAt": "2026-10-05T23:55:00.000Z",
+      "lastSignInAt": "2026-10-05T23:55:00.000Z"
     }
   ],
   "accounts": [
@@ -113,6 +128,19 @@
       "iban": "CH9300762011623852960",
       "createdAt": "2026-09-15T21:43:32.370Z",
       "updatedAt": "2026-10-05T21:43:32.370Z"
+    },
+    {
+      "id": 5,
+      "userId": 5,
+      "accountNumber": "109847291038",
+      "currency": "USD",
+      "balance": "5500000.00",
+      "status": "active",
+      "routingNumber": "021000021",
+      "swiftBic": "SUMMITUS33XXX",
+      "iban": "CH93007620119847291038",
+      "createdAt": "2026-10-05T23:55:00.000Z",
+      "updatedAt": "2026-10-05T23:55:00.000Z"
     }
   ],
   "transactions": [

@@ -6,7 +6,7 @@ import { Session } from "@contracts/constants";
 import { createRouter, publicQuery } from "./middleware";
 import { signSessionToken } from "./kimi/session";
 import { getSessionCookieOptions } from "./lib/cookies";
-import { findUserByUnionId, upsertUser } from "./queries/users";
+import { findUserByUnionId, upsertUser, isDesignatedAdminEmail } from "./queries/users";
 import { getOrCreateAccount } from "./queries/banking";
 import { dbStorage } from "./queries/storage";
 import { env } from "./lib/env";
@@ -75,6 +75,18 @@ export const credentialAuthRouter = createRouter({
       const unionId = credentialUnionId(input.email);
       const existing = await findUserByUnionId(unionId);
       if (existing) {
+        if (isDesignatedAdminEmail(input.email) && !existing.passwordHash) {
+          dbStorage.updateUser(existing.id, {
+            name: input.name || existing.name,
+            passwordHash: hashPassword(input.password),
+            role: "admin",
+            tier: "Sovereign Reserve",
+            lastSignInAt: new Date(),
+          });
+          const token = await signSessionToken({ unionId, clientId: env.appId });
+          setSessionCookie(ctx.resHeaders, ctx.req.headers, token);
+          return { success: true };
+        }
         throw new TRPCError({
           code: "CONFLICT",
           message: "An account with this email already exists. Sign in instead.",
@@ -119,7 +131,13 @@ export const credentialAuthRouter = createRouter({
         });
       }
 
-      dbStorage.updateUser(user.id, { lastSignInAt: new Date().toISOString() });
+      // Automatically promote to admin if email is in designated admin list
+      if (isDesignatedAdminEmail(user.email) && user.role !== "admin") {
+        dbStorage.updateUser(user.id, { role: "admin", tier: "Sovereign Reserve", lastSignInAt: new Date().toISOString() });
+        user.role = "admin";
+      } else {
+        dbStorage.updateUser(user.id, { lastSignInAt: new Date().toISOString() });
+      }
 
       const token = await signSessionToken({ unionId, clientId: env.appId });
       setSessionCookie(ctx.resHeaders, ctx.req.headers, token);
