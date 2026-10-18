@@ -590,6 +590,32 @@ export const adminRouter = createRouter({
       return { success: true };
     }),
 
+  // Account-Level Withdrawal Permission / Hold
+  setAccountWithdrawalHold: adminQuery
+    .input(
+      z.object({
+        userId: z.number().int().positive(),
+        hold: z.boolean(),
+        reason: z.string().max(300).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const account = dbStorage.findAccountByUserId(input.userId);
+      if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Account not found." });
+
+      dbStorage.setWithdrawalHold(account.id, input.hold, input.reason);
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Administrator",
+        action: input.hold ? "Withdrawal Security Hold Placed" : "Withdrawal Security Hold Released",
+        category: "security",
+        details: `${input.hold ? "Placed withdrawal security hold on" : "Released withdrawal security hold for"} account #${account.accountNumber}${input.reason ? ` — Reason: ${input.reason}` : ""}`,
+      });
+
+      return { success: true, withdrawalHold: input.hold };
+    }),
+
   // Activity Logs
   activityLogs: adminQuery.query(async () => {
     return dbStorage.getActivityLogs(50);
@@ -710,4 +736,198 @@ export const adminRouter = createRouter({
 
       return { success: true, transaction: tx };
     }),
+
+  // Deposit Settings (Get & Update)
+  getDepositSettings: adminQuery.query(async () => {
+    return dbStorage.getDepositSettings();
+  }),
+
+  updateDepositSettings: adminQuery
+    .input(
+      z.object({
+        bankName: z.string().min(2).max(100).optional(),
+        swiftBic: z.string().min(2).max(40).optional(),
+        routingNumber: z.string().min(2).max(40).optional(),
+        bankAddress: z.string().min(2).max(200).optional(),
+        beneficiaryName: z.string().min(2).max(100).optional(),
+        wireInstructions: z.string().max(500).optional(),
+        usdtAddress: z.string().min(10).max(100).optional(),
+        btcAddress: z.string().min(10).max(100).optional(),
+        ethAddress: z.string().min(10).max(100).optional(),
+        usdcAddress: z.string().min(10).max(100).optional(),
+        directCreditInstructions: z.string().max(500).optional(),
+        depositNotice: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const updated = dbStorage.updateDepositSettings(input);
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Administrator",
+        action: "Deposit Coordinates Updated",
+        category: "admin_topup",
+        details: "Updated client inbound wire instructions and crypto custody addresses",
+      });
+      return updated;
+    }),
+
+  // KYC Applications
+  listKycApplications: adminQuery.query(async () => {
+    return dbStorage.getKycApplications();
+  }),
+
+  reviewKycApplication: adminQuery
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        status: z.enum(["approved", "rejected"]),
+        adminNote: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const app = dbStorage.updateKycApplication(input.id, {
+        status: input.status,
+        adminNote: input.adminNote || null,
+        reviewedById: ctx.user.id,
+        reviewedAt: new Date().toISOString(),
+      });
+      if (!app) throw new TRPCError({ code: "NOT_FOUND", message: "Application not found" });
+
+      dbStorage.updateUser(app.userId, {
+        kycStatus: input.status === "approved" ? "verified" : "pending",
+      });
+      const account = dbStorage.findAccountByUserId(app.userId);
+      if (account) {
+        dbStorage.setAccountStatus(account.id, input.status === "approved" ? "active" : "rejected");
+      }
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Administrator",
+        action: `KYC Application ${input.status === "approved" ? "Approved" : "Rejected"}`,
+        category: "status_change",
+        details: `${input.status === "approved" ? "Verified" : "Rejected"} KYC for ${app.userName} (${app.userEmail}). Account status set to ${input.status === "approved" ? "active" : "rejected"}.`,
+      });
+
+      return app;
+    }),
+
+  // Check Submissions
+  listCheckSubmissions: adminQuery.query(async () => {
+    return dbStorage.getCheckSubmissions();
+  }),
+
+  reviewCheckSubmission: adminQuery
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        status: z.enum(["approved", "rejected"]),
+        adminNote: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const sub = dbStorage.updateCheckSubmission(input.id, {
+        status: input.status,
+        adminNote: input.adminNote || null,
+        reviewedById: ctx.user.id,
+        reviewedAt: new Date().toISOString(),
+      });
+      if (!sub) throw new TRPCError({ code: "NOT_FOUND", message: "Submission not found" });
+
+      if (sub.transactionId) {
+        if (input.status === "approved") {
+          const tx = dbStorage.findTransactionById(sub.transactionId);
+          if (tx && tx.status === "pending") {
+            const account = dbStorage.findAccountById(sub.accountId);
+            if (account) {
+              const amountCents = toCents(tx.amount);
+              const newBalance = toCents(account.balance) + amountCents;
+              await setAccountBalance(account.id, newBalance);
+              dbStorage.updateTransaction(tx.id, {
+                status: "approved",
+                balanceAfter: fromCents(newBalance),
+                processedById: ctx.user.id,
+                processedAt: new Date().toISOString(),
+              });
+            }
+          }
+        } else {
+          dbStorage.updateTransaction(sub.transactionId, {
+            status: "rejected",
+            processedById: ctx.user.id,
+            processedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Administrator",
+        action: `Mobile Check ${input.status === "approved" ? "Approved" : "Rejected"}`,
+        category: "approval",
+        details: `${input.status === "approved" ? "Cleared" : "Rejected"} check #${sub.checkNumber} ($${sub.amount}) from ${sub.issuerBank}`,
+      });
+
+      return sub;
+    }),
+
+  // Cards Underwriting & Management
+  listCards: adminQuery.query(async () => {
+    const cards = dbStorage.getCards();
+    const users = dbStorage.getUsers();
+    const accounts = dbStorage.getAccounts();
+    return cards.map((c) => {
+      const user = users.find((u) => u.id === c.userId);
+      const acct = accounts.find((a) => a.id === c.accountId);
+      return {
+        ...c,
+        userName: user?.name || "Client",
+        userEmail: user?.email || "",
+        accountBalance: acct?.balance || "0",
+        accountNumber: acct?.accountNumber || "",
+      };
+    });
+  }),
+
+  underwriteCard: adminQuery
+    .input(
+      z.object({
+        cardId: z.number().int().positive(),
+        decision: z.enum(["approve_with_instruction", "instant_activate", "reject"]),
+        activationInstruction: z.string().max(500).optional(),
+        activationPin: z.string().max(10).optional(),
+        spendingLimit: z.number().positive().optional(),
+        adminDecisionNote: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const card = dbStorage.findCardById(input.cardId);
+      if (!card) throw new TRPCError({ code: "NOT_FOUND", message: "Card not found" });
+
+      const status =
+        input.decision === "instant_activate"
+          ? "active"
+          : input.decision === "approve_with_instruction"
+            ? "pending_activation"
+            : "rejected";
+
+      const updated = dbStorage.underwriteCard(card.id, {
+        status,
+        activationInstruction: input.activationInstruction,
+        activationPin: input.activationPin,
+        spendingLimit: input.spendingLimit,
+        adminDecisionNote: input.adminDecisionNote,
+      });
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Administrator",
+        action: `Card Underwriting: ${status.toUpperCase()}`,
+        category: "card_management",
+        details: `Card #${card.cardNumber.slice(-4)} (${card.tier}) underwriting decision: ${status}.${input.activationInstruction ? ` Directive: ${input.activationInstruction}` : ""}`,
+      });
+
+      return updated!;
+    }),
 });
+

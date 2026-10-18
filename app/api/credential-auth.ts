@@ -69,6 +69,25 @@ export const credentialAuthRouter = createRouter({
         name: z.string().trim().min(2, "Enter your full name").max(120),
         email: emailSchema,
         password: passwordSchema,
+        kyc: z
+          .object({
+            dateOfBirth: z.string().optional(),
+            nationality: z.string().optional(),
+            phone: z.string().optional(),
+            address: z.string().optional(),
+            city: z.string().optional(),
+            country: z.string().optional(),
+            postalCode: z.string().optional(),
+            occupation: z.string().optional(),
+            employerName: z.string().optional(),
+            annualIncome: z.string().optional(),
+            sourceOfFunds: z.string().optional(),
+            govIdType: z.string().optional(),
+            govIdFront: z.string().optional(),
+            govIdBack: z.string().optional(),
+            selfie: z.string().optional(),
+          })
+          .optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -108,7 +127,54 @@ export const credentialAuthRouter = createRouter({
           message: "Failed to create your account. Please try again.",
         });
       }
-      await getOrCreateAccount(user.id);
+      const account = await getOrCreateAccount(user.id);
+
+      // If non-admin user, set initial status to pending compliance review
+      if (user.role !== "admin") {
+        dbStorage.setAccountStatus(account.id, "pending");
+        dbStorage.updateUser(user.id, {
+          kycStatus: "pending",
+          phone: input.kyc?.phone || undefined,
+          country: input.kyc?.country || undefined,
+        });
+
+        // If KYC documents / details were provided during multi-step signup, record KYC application
+        if (input.kyc) {
+          dbStorage.addKycApplication({
+            userId: user.id,
+            userName: user.name || user.email || "Client",
+            userEmail: user.email || "",
+            dateOfBirth: input.kyc.dateOfBirth || "Unspecified",
+            nationality: input.kyc.nationality || "Unspecified",
+            phone: input.kyc.phone || "Unspecified",
+            address: input.kyc.address || "Unspecified",
+            city: input.kyc.city || "Unspecified",
+            country: input.kyc.country || "Unspecified",
+            postalCode: input.kyc.postalCode || "Unspecified",
+            occupation: input.kyc.occupation || "Unspecified",
+            employerName: input.kyc.employerName || "Unspecified",
+            annualIncome: input.kyc.annualIncome || "Unspecified",
+            sourceOfFunds: input.kyc.sourceOfFunds || "Unspecified",
+            govIdType: input.kyc.govIdType || "passport",
+            govIdFront: input.kyc.govIdFront || "",
+            govIdBack: input.kyc.govIdBack || "",
+            selfie: input.kyc.selfie || "",
+            status: "pending",
+            adminNote: null,
+            reviewedById: null,
+            submittedAt: new Date().toISOString(),
+            reviewedAt: null,
+          });
+        }
+
+        dbStorage.logActivity({
+          actorId: user.id,
+          actorName: user.name || user.email || "Client",
+          action: "New Client Signup",
+          category: "status_change",
+          details: `Client registered (${user.email}). Account set to pending compliance officer review.`,
+        });
+      }
 
       const token = await signSessionToken({ unionId, clientId: env.appId });
       setSessionCookie(ctx.resHeaders, ctx.req.headers, token);

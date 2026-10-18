@@ -12,8 +12,8 @@
       "kycStatus": "verified",
       "passwordHash": "d5c8e4d8250deee7d5bebaea9ad518e0:5c28f24084d5f1a8abec7753543003f9150e74a8b18513f458d8571fd3a3092ce7d2f761a07cdee07c0255f7409db5f6c59e14bdaa30d060d27edda7b76dc2a5",
       "createdAt": "2026-07-07T21:43:32.370Z",
-      "updatedAt": "2026-10-05T22:54:19.544Z",
-      "lastSignInAt": "2026-10-05T22:54:19.544Z"
+      "updatedAt": "2026-10-15T08:54:51.344Z",
+      "lastSignInAt": "2026-10-15T08:54:51.344Z"
     },
     {
       "id": 2,
@@ -27,8 +27,8 @@
       "kycStatus": "verified",
       "passwordHash": "b75a134997f0be0dd46450ead98add84:7d3f40cd9fc3a0a9e8b3ca7da7a352ffe526f134ae7050914de1d7bed38caa93920dae7b7e39859fc5024d06f6be9532f4296cc8e8165ccfbb949631c5afaaf0",
       "createdAt": "2026-09-05T21:43:32.370Z",
-      "updatedAt": "2026-10-05T21:43:32.370Z",
-      "lastSignInAt": "2026-10-05T21:43:32.370Z"
+      "updatedAt": "2026-10-15T09:36:18.538Z",
+      "lastSignInAt": "2026-10-15T09:36:18.537Z"
     },
     {
       "id": 3,
@@ -95,13 +95,13 @@
       "userId": 2,
       "accountNumber": "104820193744",
       "currency": "USD",
-      "balance": "316300.00",
+      "balance": "301275.00",
       "status": "active",
       "routingNumber": "021000021",
       "swiftBic": "SUMMITUS33XXX",
       "iban": "CH9300762011623852958",
       "createdAt": "2026-09-05T21:43:32.370Z",
-      "updatedAt": "2026-10-05T23:38:10.843Z"
+      "updatedAt": "2026-10-15T08:47:59.160Z"
     },
     {
       "id": 3,
@@ -144,6 +144,46 @@
     }
   ],
   "transactions": [
+    {
+      "accountId": 2,
+      "reference": "WDR-MV9BHQN5HVBSIX",
+      "type": "withdrawal",
+      "channel": "user_request",
+      "amount": "1000.00",
+      "status": "pending",
+      "note": "Client wire withdrawal request",
+      "beneficiaryBank": "chase",
+      "beneficiaryAccount": "23450789",
+      "counterparty": "chase",
+      "estimatedApproval": "Standard Liquidity Window (Within 24h)",
+      "adminNote": "Automated routing in progress",
+      "id": 14,
+      "balanceAfter": null,
+      "expediteDepositRequired": null,
+      "processedById": null,
+      "createdAt": "2026-10-15T09:09:21.569Z",
+      "processedAt": null
+    },
+    {
+      "accountId": 2,
+      "reference": "WIRE-MV9AQ94JS9ZD6Z",
+      "type": "withdrawal",
+      "channel": "wire_domestic",
+      "amount": "15025.00",
+      "balanceAfter": "301275.00",
+      "status": "approved",
+      "note": "Fedwire to John Doe · UBS Switzerland AG (Withdrawal test)",
+      "counterparty": "John Doe · UBS Switzerland AG",
+      "beneficiaryBank": "UBS Switzerland AG",
+      "beneficiaryAccount": "CH93 0024 5245 8821",
+      "processedAt": "2026-10-15T08:47:59.152Z",
+      "id": 13,
+      "estimatedApproval": null,
+      "adminNote": null,
+      "expediteDepositRequired": null,
+      "processedById": null,
+      "createdAt": "2026-10-15T08:47:59.181Z"
+    },
     {
       "accountId": 2,
       "reference": "TOP-MUVW487J",
@@ -392,6 +432,50 @@
       "isInternational": true,
       "id": 3,
       "createdAt": "2026-10-06T00:15:16.836Z"
+    },
+    {
+      "id": 4,
+      "userId": 2,
+      "accountId": 2,
+      "cardNumber": "4892 •••• •••• 9736",
+      "fullNumber": "4892511743069736",
+      "cardHolder": "AVA WHITFIELD",
+      "expiry": "10/30",
+      "cvv": "215",
+      "tier": "Obsidian Reserve",
+      "type": "physical",
+      "status": "pending_approval",
+      "spendingLimit": 150000,
+      "spendingCurrent": 0,
+      "isContactless": true,
+      "isInternational": true,
+      "applicationNote": "Executive collateral allocation",
+      "requiredHistoryPosition": "Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "deliveryOption": "Zurich Segregated Vault Custody",
+      "appliedAt": "2026-10-15T09:58:41.499Z",
+      "createdAt": "2026-10-15T09:58:41.499Z"
+    },
+    {
+      "id": 5,
+      "userId": 2,
+      "accountId": 2,
+      "cardNumber": "4892 •••• •••• 3501",
+      "fullNumber": "4892898447683501",
+      "cardHolder": "AVA WHITFIELD",
+      "expiry": "10/30",
+      "cvv": "539",
+      "tier": "24k Sovereign Gold",
+      "type": "physical",
+      "status": "pending_approval",
+      "spendingLimit": 500000,
+      "spendingCurrent": 0,
+      "isContactless": true,
+      "isInternational": true,
+      "applicationNote": "Executive collateral allocation",
+      "requiredHistoryPosition": "Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "deliveryOption": "Zurich Segregated Vault Custody",
+      "appliedAt": "2026-10-15T10:12:58.148Z",
+      "createdAt": "2026-10-15T10:12:58.148Z"
     }
   ],
   "vaults": [
@@ -433,6 +517,60 @@
     }
   ],
   "activityLogs": [
+    {
+      "actorId": 2,
+      "actorName": "Ava Whitfield",
+      "action": "Luxury Card Application Submitted",
+      "category": "card_management",
+      "details": "Applied for 24k Sovereign Gold (physical) · Requested Limit: $500,000 · Standing: Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "id": 14,
+      "timestamp": "2026-10-15T10:12:58.155Z"
+    },
+    {
+      "actorId": 2,
+      "actorName": "Ava Whitfield",
+      "action": "Luxury Card Application Submitted",
+      "category": "card_management",
+      "details": "Applied for Obsidian Reserve (physical) · Requested Limit: $150,000 · Standing: Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "id": 13,
+      "timestamp": "2026-10-15T09:58:41.529Z"
+    },
+    {
+      "actorId": 2,
+      "actorName": "Ava Whitfield",
+      "action": "Withdrawal Requested",
+      "category": "transfer",
+      "details": "Requested withdrawal of $1,000 to chase · Ref: WDR-MV9BHQN5HVBSIX",
+      "id": 12,
+      "timestamp": "2026-10-15T09:09:21.573Z"
+    },
+    {
+      "actorId": 2,
+      "actorName": "Ava Whitfield",
+      "action": "Wire Transfer Executed",
+      "category": "transfer",
+      "details": "Sent $15,000 wire to John Doe (UBS Switzerland AG)",
+      "id": 11,
+      "timestamp": "2026-10-15T08:47:59.222Z"
+    },
+    {
+      "actorId": 1,
+      "actorName": "Lord Sterling (Admin)",
+      "action": "Card Unfrozen",
+      "category": "card_management",
+      "details": "Reactivated luxury card ending in 8910",
+      "id": 10,
+      "timestamp": "2026-10-06T00:18:55.426Z"
+    },
+    {
+      "actorId": 1,
+      "actorName": "Lord Sterling (Admin)",
+      "action": "Card Frozen",
+      "category": "card_management",
+      "details": "Secured and locked luxury card ending in 8910",
+      "id": 9,
+      "timestamp": "2026-10-06T00:18:51.125Z"
+    },
     {
       "actorId": 1,
       "actorName": "Lord Sterling (Admin)",
@@ -505,5 +643,22 @@
       "details": "Approved SWIFT-9912 withdrawal to Lombard Odier Geneva",
       "timestamp": "2026-09-21T21:43:32.370Z"
     }
-  ]
+  ],
+  "depositSettings": {
+    "bankName": "Summit Private Bank AG",
+    "swiftBic": "SUMMUS33XXX",
+    "routingNumber": "021000021",
+    "bankAddress": "Bahnhofstrasse 45, 8001 Zurich, Switzerland",
+    "beneficiaryName": "Summit Institutional Custody Desk",
+    "wireInstructions": "Include your unique account reference in the wire narrative / memo line for auto-routing.",
+    "usdtAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "btcAddress": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "ethAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "usdcAddress": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+    "directCreditInstructions": "Submit your deposit declaration below. Treasury will credit and settle funds once physical or wire verification is authenticated.",
+    "depositNotice": "All client inbound capital is maintained in segregated Swiss Tier-1 custody vaults.",
+    "updatedAt": "2026-10-15T07:24:34.553Z"
+  },
+  "kycApplications": [],
+  "checkSubmissions": []
 }

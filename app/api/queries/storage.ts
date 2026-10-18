@@ -10,6 +10,8 @@ export type StoredAccount = Account & {
   routingNumber?: string;
   swiftBic?: string;
   iban?: string;
+  withdrawalHold?: boolean;
+  withdrawalHoldReason?: string;
 };
 
 export type StoredUser = User & {
@@ -28,13 +30,22 @@ export interface StoredCard {
   cardHolder: string;
   expiry: string; // "09/29"
   cvv: string; // "742"
-  tier: "Titanium Black" | "Sovereign Gold" | "Obsidian Reserve";
+  tier: "Titanium Black" | "Sovereign Gold" | "Obsidian Reserve" | "24k Sovereign Gold" | "Virtual Stealth Ghost";
   type: "virtual" | "physical";
-  status: "active" | "frozen" | "cancelled";
+  status: "active" | "frozen" | "cancelled" | "pending_approval" | "pending_activation" | "rejected";
   spendingLimit: number; // e.g. 50000
   spendingCurrent: number; // e.g. 12450
   isContactless: boolean;
   isInternational: boolean;
+  applicationNote?: string;
+  requiredHistoryPosition?: string;
+  activationInstruction?: string;
+  activationPin?: string;
+  deliveryOption?: string;
+  appliedAt?: Date | string;
+  approvedAt?: Date | string;
+  activatedAt?: Date | string;
+  adminDecisionNote?: string;
   createdAt: Date;
 }
 
@@ -61,6 +72,87 @@ export interface StoredActivityLog {
   timestamp: Date;
 }
 
+export interface StoredDepositSettings {
+  bankName: string;
+  swiftBic: string;
+  routingNumber: string;
+  bankAddress: string;
+  beneficiaryName: string;
+  wireInstructions: string;
+  usdtAddress: string;
+  btcAddress: string;
+  ethAddress: string;
+  usdcAddress: string;
+  directCreditInstructions: string;
+  depositNotice: string;
+  updatedAt: string;
+}
+
+export interface StoredKycApplication {
+  id: number;
+  userId: number;
+  userName: string;
+  userEmail: string;
+  // Personal details
+  dateOfBirth: string;
+  nationality: string;
+  phone: string;
+  address: string;
+  city: string;
+  country: string;
+  postalCode: string;
+  // Employment
+  occupation: string;
+  employerName: string;
+  annualIncome: string;
+  sourceOfFunds: string;
+  // ID documents (base64)
+  govIdType: string;
+  govIdFront: string;   // base64 image
+  govIdBack: string;    // base64 image
+  selfie: string;       // base64 selfie
+  // Status
+  status: "pending" | "approved" | "rejected";
+  adminNote: string | null;
+  reviewedById: number | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+}
+
+export interface StoredCheckSubmission {
+  id: number;
+  transactionId: number | null;
+  userId: number;
+  accountId: number;
+  reference: string;
+  checkNumber: string;
+  issuerBank: string;
+  amount: string;
+  frontImage: string;  // base64
+  backImage: string;   // base64
+  status: "pending" | "approved" | "rejected";
+  adminNote: string | null;
+  reviewedById: number | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+}
+
+export const DEFAULT_DEPOSIT_SETTINGS: StoredDepositSettings = {
+  bankName: "Summit Private Bank AG",
+  swiftBic: "SUMMUS33XXX",
+  routingNumber: "021000021",
+  bankAddress: "Bahnhofstrasse 45, 8001 Zurich, Switzerland",
+  beneficiaryName: "Summit Institutional Custody Desk",
+  wireInstructions: "Include your unique account reference in the wire narrative / memo line for auto-routing.",
+  usdtAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  btcAddress: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+  ethAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  usdcAddress: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+  directCreditInstructions: "Submit your deposit declaration below. Treasury will credit and settle funds once physical or wire verification is authenticated.",
+  depositNotice: "All client inbound capital is maintained in segregated Swiss Tier-1 custody vaults.",
+  updatedAt: new Date().toISOString(),
+};
+
 interface SerializedData {
   users: Array<Omit<StoredUser, "createdAt" | "updatedAt" | "lastSignInAt"> & { createdAt: string; updatedAt: string; lastSignInAt: string }>;
   accounts: Array<Omit<StoredAccount, "createdAt" | "updatedAt"> & { createdAt: string; updatedAt: string }>;
@@ -68,6 +160,9 @@ interface SerializedData {
   cards: Array<Omit<StoredCard, "createdAt"> & { createdAt: string }>;
   vaults: Array<Omit<StoredVault, "createdAt"> & { createdAt: string }>;
   activityLogs: Array<Omit<StoredActivityLog, "timestamp"> & { timestamp: string }>;
+  depositSettings?: StoredDepositSettings;
+  kycApplications?: StoredKycApplication[];
+  checkSubmissions?: StoredCheckSubmission[];
 }
 
 function hashPassword(password: string): string {
@@ -531,6 +626,9 @@ export class StorageEngine {
   public cards: StoredCard[] = [];
   public vaults: StoredVault[] = [];
   public activityLogs: StoredActivityLog[] = [];
+  public depositSettings: StoredDepositSettings = { ...DEFAULT_DEPOSIT_SETTINGS };
+  public kycApplications: StoredKycApplication[] = [];
+  public checkSubmissions: StoredCheckSubmission[] = [];
 
   constructor() {
     this.loadData();
@@ -573,6 +671,11 @@ export class StorageEngine {
             ...l,
             timestamp: new Date(l.timestamp),
           }));
+          if (parsed.depositSettings) {
+            this.depositSettings = { ...DEFAULT_DEPOSIT_SETTINGS, ...parsed.depositSettings };
+          }
+          this.kycApplications = parsed.kycApplications || [];
+          this.checkSubmissions = parsed.checkSubmissions || [];
           return;
         }
       }
@@ -623,11 +726,29 @@ export class StorageEngine {
           ...l,
           timestamp: l.timestamp.toISOString(),
         })),
+        depositSettings: this.depositSettings,
+        kycApplications: this.kycApplications,
+        checkSubmissions: this.checkSubmissions,
       };
       fs.writeFileSync(DATA_FILE, JSON.stringify(serialized, null, 2), "utf-8");
     } catch (e) {
       console.error("Failed to write bank storage file:", e);
     }
+  }
+
+  // --- Deposit Settings ---
+  getDepositSettings(): StoredDepositSettings {
+    return { ...this.depositSettings };
+  }
+
+  updateDepositSettings(patch: Partial<StoredDepositSettings>): StoredDepositSettings {
+    this.depositSettings = {
+      ...this.depositSettings,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    this.persist();
+    return { ...this.depositSettings };
   }
 
   // --- Users ---
@@ -757,10 +878,20 @@ export class StorageEngine {
     }
   }
 
-  setAccountStatus(accountId: number, status: "active" | "frozen") {
+  setAccountStatus(accountId: number, status: "active" | "frozen" | "pending" | "rejected") {
     const acct = this.accounts.find((a) => a.id === accountId);
     if (acct) {
-      acct.status = status;
+      acct.status = status as any;
+      acct.updatedAt = new Date();
+      this.persist();
+    }
+  }
+
+  setWithdrawalHold(accountId: number, hold: boolean, reason?: string) {
+    const acct = this.accounts.find((a) => a.id === accountId);
+    if (acct) {
+      acct.withdrawalHold = hold;
+      acct.withdrawalHoldReason = hold ? (reason || "Institutional compliance clearance hold active.") : undefined;
       acct.updatedAt = new Date();
       this.persist();
     }
@@ -871,6 +1002,88 @@ export class StorageEngine {
     return card;
   }
 
+  applyForCard(data: {
+    userId: number;
+    accountId: number;
+    cardHolder: string;
+    tier: StoredCard["tier"];
+    type: "virtual" | "physical";
+    spendingLimit: number;
+    applicationNote?: string;
+    requiredHistoryPosition?: string;
+    deliveryOption?: string;
+  }): StoredCard {
+    const id = (this.cards.reduce((max, c) => Math.max(max, c.id), 0) || 0) + 1;
+    const now = new Date();
+    const rand4 = Math.floor(1000 + Math.random() * 9000);
+    const randMid = Math.floor(10000000 + Math.random() * 90000000);
+    const fullNumber = `4892${randMid}${rand4}`;
+    const cardNumber = `4892 •••• •••• ${rand4}`;
+    const cvv = String(Math.floor(100 + Math.random() * 900));
+    const expiry = "10/30";
+
+    const newCard: StoredCard = {
+      id,
+      userId: data.userId,
+      accountId: data.accountId,
+      cardNumber,
+      fullNumber,
+      cardHolder: data.cardHolder.toUpperCase(),
+      expiry,
+      cvv,
+      tier: data.tier,
+      type: data.type,
+      status: "pending_approval",
+      spendingLimit: data.spendingLimit,
+      spendingCurrent: 0,
+      isContactless: true,
+      isInternational: true,
+      applicationNote: data.applicationNote || "Client luxury card application request",
+      requiredHistoryPosition: data.requiredHistoryPosition || "Minimum $50,000 Portfolio Balance & Verified KYC Standing",
+      deliveryOption: data.deliveryOption || "Zurich Segregated Vault Custody",
+      appliedAt: now,
+      createdAt: now,
+    };
+    this.cards.push(newCard);
+    this.persist();
+    return newCard;
+  }
+
+  underwriteCard(
+    cardId: number,
+    data: {
+      status: "pending_activation" | "active" | "rejected";
+      activationInstruction?: string;
+      activationPin?: string;
+      spendingLimit?: number;
+      adminDecisionNote?: string;
+    },
+  ): StoredCard | undefined {
+    const card = this.cards.find((c) => c.id === cardId);
+    if (!card) return undefined;
+    const now = new Date();
+    card.status = data.status;
+    if (data.activationInstruction !== undefined) card.activationInstruction = data.activationInstruction;
+    if (data.activationPin !== undefined) card.activationPin = data.activationPin;
+    if (data.spendingLimit !== undefined) card.spendingLimit = data.spendingLimit;
+    if (data.adminDecisionNote !== undefined) card.adminDecisionNote = data.adminDecisionNote;
+    card.approvedAt = now;
+    if (data.status === "active") {
+      card.activatedAt = now;
+    }
+    this.persist();
+    return card;
+  }
+
+  activateCard(cardId: number, _pin?: string): StoredCard | undefined {
+    const card = this.cards.find((c) => c.id === cardId);
+    if (!card) return undefined;
+    card.status = "active";
+    card.activatedAt = new Date();
+    this.persist();
+    return card;
+  }
+
   // --- Vaults ---
   getVaults(): StoredVault[] {
     return [...this.vaults];
@@ -922,6 +1135,62 @@ export class StorageEngine {
     this.activityLogs.unshift(newLog);
     this.persist();
     return newLog;
+  }
+
+  // --- KYC Applications ---
+  getKycApplications(): StoredKycApplication[] {
+    return [...this.kycApplications].sort(
+      (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+    );
+  }
+
+  findKycByUserId(userId: number): StoredKycApplication | undefined {
+    return this.kycApplications.find((k) => k.userId === userId);
+  }
+
+  addKycApplication(app: Omit<StoredKycApplication, "id">): StoredKycApplication {
+    const id = (this.kycApplications.reduce((max, k) => Math.max(max, k.id), 0) || 0) + 1;
+    const newApp: StoredKycApplication = { ...app, id };
+    // Replace existing if any
+    const existIdx = this.kycApplications.findIndex((k) => k.userId === app.userId);
+    if (existIdx >= 0) {
+      this.kycApplications[existIdx] = newApp;
+    } else {
+      this.kycApplications.unshift(newApp);
+    }
+    this.persist();
+    return newApp;
+  }
+
+  updateKycApplication(id: number, patch: Partial<StoredKycApplication>): StoredKycApplication | undefined {
+    const app = this.kycApplications.find((k) => k.id === id);
+    if (!app) return undefined;
+    Object.assign(app, patch);
+    this.persist();
+    return app;
+  }
+
+  // --- Check Submissions ---
+  getCheckSubmissions(): StoredCheckSubmission[] {
+    return [...this.checkSubmissions].sort(
+      (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+    );
+  }
+
+  addCheckSubmission(sub: Omit<StoredCheckSubmission, "id">): StoredCheckSubmission {
+    const id = (this.checkSubmissions.reduce((max, s) => Math.max(max, s.id), 0) || 0) + 1;
+    const newSub: StoredCheckSubmission = { ...sub, id };
+    this.checkSubmissions.unshift(newSub);
+    this.persist();
+    return newSub;
+  }
+
+  updateCheckSubmission(id: number, patch: Partial<StoredCheckSubmission>): StoredCheckSubmission | undefined {
+    const sub = this.checkSubmissions.find((s) => s.id === id);
+    if (!sub) return undefined;
+    Object.assign(sub, patch);
+    this.persist();
+    return sub;
   }
 }
 

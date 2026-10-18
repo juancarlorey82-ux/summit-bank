@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, publicQuery } from "./middleware";
 import {
   fromCents,
   generateReference,
@@ -29,6 +29,9 @@ function assertActive(status: string) {
 }
 
 export const bankRouter = createRouter({
+  depositSettings: publicQuery.query(() => {
+    return dbStorage.getDepositSettings();
+  }),
   account: authedQuery.query(async ({ ctx }) => {
     const acct = await getOrCreateAccount(ctx.user.id);
     const user = dbStorage.findUserById(ctx.user.id);
@@ -94,8 +97,8 @@ export const bankRouter = createRouter({
         amount: amountSchema,
         checkNumber: z.string().min(3).max(20),
         issuerBank: z.string().min(2).max(100),
-        frontImage: z.string().optional(),
-        backImage: z.string().optional(),
+        frontImage: z.string().min(10).optional(),  // base64
+        backImage: z.string().min(10).optional(),   // base64
         note: z.string().max(200).optional(),
       }),
     )
@@ -103,9 +106,11 @@ export const bankRouter = createRouter({
       const account = await getOrCreateAccount(ctx.user.id);
       assertActive(account.status);
 
-      dbStorage.addTransaction({
+      const ref = generateReference("CHK");
+
+      const tx = dbStorage.addTransaction({
         accountId: account.id,
-        reference: generateReference("CHK"),
+        reference: ref,
         type: "deposit",
         channel: "mobile_check",
         amount: fromCents(toCents(input.amount)),
@@ -114,15 +119,35 @@ export const bankRouter = createRouter({
         counterparty: input.issuerBank,
       });
 
+      // Store check images for admin review
+      if (input.frontImage || input.backImage) {
+        dbStorage.addCheckSubmission({
+          transactionId: tx.id,
+          userId: ctx.user.id,
+          accountId: account.id,
+          reference: ref,
+          checkNumber: input.checkNumber,
+          issuerBank: input.issuerBank,
+          amount: fromCents(toCents(input.amount)),
+          frontImage: input.frontImage || "",
+          backImage: input.backImage || "",
+          status: "pending",
+          adminNote: null,
+          reviewedById: null,
+          submittedAt: new Date().toISOString(),
+          reviewedAt: null,
+        });
+      }
+
       dbStorage.logActivity({
         actorId: ctx.user.id,
         actorName: ctx.user.name || ctx.user.email || "Client",
         action: "Mobile Check Submitted",
         category: "transfer",
-        details: `Submitted check #${input.checkNumber} for $${input.amount.toLocaleString()} from ${input.issuerBank}`,
+        details: `Submitted check #${input.checkNumber} for $${input.amount.toLocaleString()} from ${input.issuerBank} — awaiting admin image verification`,
       });
 
-      return { success: true, reference: generateReference("CHK") };
+      return { success: true, reference: ref };
     }),
 
   // Crypto Asset Settlement
@@ -168,6 +193,15 @@ export const bankRouter = createRouter({
       const account = await getOrCreateAccount(ctx.user.id);
       assertActive(account.status);
 
+      if ((account as any).withdrawalHold) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            (account as any).withdrawalHoldReason ||
+            "Withdrawal security hold active on this account. Contact your designated Private Wealth Compliance Officer.",
+        });
+      }
+
       const balanceCents = toCents(account.balance);
       const amountCents = toCents(input.amount);
       if (amountCents > balanceCents) {
@@ -177,9 +211,18 @@ export const bankRouter = createRouter({
         });
       }
 
+      const ref = generateReference("WDR");
+      const isSignificant = input.amount >= 10000;
+      const estimatedApproval = isSignificant
+        ? "Under Executive Treasury Clearance"
+        : "Standard Liquidity Window (Within 24h)";
+      const adminNote = isSignificant
+        ? "Awaiting Executive Officer Clearance Directive"
+        : "Automated routing in progress";
+
       dbStorage.addTransaction({
         accountId: account.id,
-        reference: generateReference("WDR"),
+        reference: ref,
         type: "withdrawal",
         channel: "user_request",
         amount: fromCents(amountCents),
@@ -188,17 +231,26 @@ export const bankRouter = createRouter({
         beneficiaryBank: input.destinationBank || "External Financial Institution",
         beneficiaryAccount: input.destinationAccount || null,
         counterparty: input.destinationBank || "Linked Destination Account",
+        estimatedApproval,
+        adminNote,
       });
 
       dbStorage.logActivity({
         actorId: ctx.user.id,
         actorName: ctx.user.name || ctx.user.email || "Client",
-        action: "Withdrawal Requested",
+        action: isSignificant ? "High-Value Outflow Dispatched" : "Withdrawal Requested",
         category: "transfer",
-        details: `Requested withdrawal of $${input.amount.toLocaleString()} to ${input.destinationBank || "external bank"}`,
+        details: `Requested withdrawal of $${input.amount.toLocaleString()} to ${input.destinationBank || "external bank"} · Ref: ${ref}${isSignificant ? " [Subject to Treasury Clearance Directive]" : ""}`,
       });
 
-      return { success: true };
+      return {
+        success: true,
+        reference: ref,
+        amount: input.amount,
+        destinationBank: input.destinationBank || "External Financial Institution",
+        isSignificant,
+        estimatedApproval,
+      };
     }),
 
   // Internal P2P Summit Transfer
@@ -305,6 +357,15 @@ export const bankRouter = createRouter({
     .mutation(async ({ ctx, input }) => {
       const sender = await getOrCreateAccount(ctx.user.id);
       assertActive(sender.status);
+
+      if ((sender as any).withdrawalHold) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            (sender as any).withdrawalHoldReason ||
+            "Outbound wire clearance hold active on this account. Contact your designated Private Wealth Compliance Officer.",
+        });
+      }
 
       const fee = input.type === "international" ? 45 : 25;
       const totalCents = toCents(input.amount + fee);
@@ -518,6 +579,116 @@ export const bankRouter = createRouter({
       return updated!;
     }),
 
+  applyCard: authedQuery
+    .input(
+      z.object({
+        tier: z.enum([
+          "Titanium Black",
+          "Sovereign Gold",
+          "Obsidian Reserve",
+          "24k Sovereign Gold",
+          "Virtual Stealth Ghost",
+        ]),
+        type: z.enum(["physical", "virtual"]).default("physical"),
+        spendingLimit: z.number().min(1000).max(1_000_000).default(100000),
+        cardHolder: z.string().min(2).max(60).optional(),
+        deliveryOption: z.string().optional(),
+        applicationNote: z.string().max(400).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const account = await getOrCreateAccount(ctx.user.id);
+      const user = dbStorage.findUserById(ctx.user.id);
+      const cardHolder = input.cardHolder || user?.name || "SUMMIT CLIENT";
+
+      // Evaluate client history position
+      const balance = Number(account.balance || 0);
+      const txCount = dbStorage.listAccountTransactions(account.id, 50).length;
+      const historyPosition =
+        balance >= 250000
+          ? `Sovereign Reserve Qualified ($${balance.toLocaleString()} Liquid Assets · ${txCount} Settled Transactions)`
+          : balance >= 100000
+            ? `Private Wealth Qualified ($${balance.toLocaleString()} Liquid Assets · ${txCount} Settled Transactions)`
+            : balance >= 25000
+              ? `High Net Worth Portfolio ($${balance.toLocaleString()} Liquid Assets · ${txCount} Settled Transactions)`
+              : `Standard Portfolio Standing ($${balance.toLocaleString()} Liquid Assets · ${txCount} Settled Transactions)`;
+
+      const card = dbStorage.applyForCard({
+        userId: ctx.user.id,
+        accountId: account.id,
+        cardHolder,
+        tier: input.tier as any,
+        type: input.type,
+        spendingLimit: input.spendingLimit,
+        applicationNote: input.applicationNote,
+        requiredHistoryPosition: historyPosition,
+        deliveryOption: input.deliveryOption,
+      });
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Client",
+        action: "Luxury Card Application Submitted",
+        category: "card_management",
+        details: `Applied for ${input.tier} (${input.type}) · Requested Limit: $${input.spendingLimit.toLocaleString()} · Standing: ${historyPosition}`,
+      });
+
+      return card;
+    }),
+
+  activateCard: authedQuery
+    .input(
+      z.object({
+        cardId: z.number().int().positive(),
+        pin: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const card = dbStorage.findCardById(input.cardId);
+      if (!card || card.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Card not found" });
+      }
+
+      if (card.status !== "pending_activation" && card.status !== "pending_approval") {
+        if (card.status === "active") {
+          return card;
+        }
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot activate card in ${card.status} status.`,
+        });
+      }
+
+      if (card.status === "pending_approval") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Card application is under review by Treasury Underwriting. Awaiting executive approval directive.",
+        });
+      }
+
+      // If admin assigned an activation PIN, verify it
+      if (card.activationPin && input.pin) {
+        if (input.pin.trim() !== card.activationPin.trim()) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Invalid Signatory Security PIN. Please verify the directive issued by your executive officer.",
+          });
+        }
+      }
+
+      const updated = dbStorage.activateCard(card.id, input.pin);
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: ctx.user.name || "Client",
+        action: "Card Activated Online",
+        category: "card_management",
+        details: `Activated ${card.tier} ending in ${card.cardNumber.slice(-4)}. Card is now fully operational.`,
+      });
+
+      return updated!;
+    }),
+
   issueCard: authedQuery
     .input(
       z.object({
@@ -695,6 +866,83 @@ export const bankRouter = createRouter({
         { symbol: "BTC/USD", rate: 89450, change: "+3.40%", up: true },
       ],
       updatedAt: new Date().toISOString(),
+    };
+  }),
+
+  // Submit KYC Application
+  submitKycApplication: authedQuery
+    .input(
+      z.object({
+        dateOfBirth: z.string().min(6),
+        nationality: z.string().min(2).max(60),
+        phone: z.string().min(6).max(30),
+        address: z.string().min(5).max(200),
+        city: z.string().min(2).max(60),
+        country: z.string().min(2).max(60),
+        postalCode: z.string().min(2).max(20),
+        occupation: z.string().min(2).max(100),
+        employerName: z.string().min(2).max(100),
+        annualIncome: z.string().min(1).max(40),
+        sourceOfFunds: z.string().min(3).max(200),
+        govIdType: z.enum(["passport", "national_id", "drivers_license"]),
+        govIdFront: z.string().min(10),   // base64
+        govIdBack: z.string().min(10),    // base64
+        selfie: z.string().min(10),       // base64
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = dbStorage.findUserById(ctx.user.id);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+
+      // Mark user kyc as pending
+      dbStorage.updateUser(ctx.user.id, { kycStatus: "pending" });
+
+      const app = dbStorage.addKycApplication({
+        userId: ctx.user.id,
+        userName: user.name || user.email || "Client",
+        userEmail: user.email || "",
+        dateOfBirth: input.dateOfBirth,
+        nationality: input.nationality,
+        phone: input.phone,
+        address: input.address,
+        city: input.city,
+        country: input.country,
+        postalCode: input.postalCode,
+        occupation: input.occupation,
+        employerName: input.employerName,
+        annualIncome: input.annualIncome,
+        sourceOfFunds: input.sourceOfFunds,
+        govIdType: input.govIdType,
+        govIdFront: input.govIdFront,
+        govIdBack: input.govIdBack,
+        selfie: input.selfie,
+        status: "pending",
+        adminNote: null,
+        reviewedById: null,
+        submittedAt: new Date().toISOString(),
+        reviewedAt: null,
+      });
+
+      dbStorage.logActivity({
+        actorId: ctx.user.id,
+        actorName: user.name || user.email || "Client",
+        action: "KYC Application Submitted",
+        category: "status_change",
+        details: `${user.name || "Client"} submitted KYC documents (${input.govIdType}) for admin verification`,
+      });
+
+      return { success: true, applicationId: app.id };
+    }),
+
+  // Get own KYC status
+  myKycStatus: authedQuery.query(async ({ ctx }) => {
+    const user = dbStorage.findUserById(ctx.user.id);
+    const kyc = dbStorage.findKycByUserId(ctx.user.id);
+    return {
+      kycStatus: user?.kycStatus || "pending",
+      hasApplication: !!kyc,
+      applicationStatus: kyc?.status || null,
+      submittedAt: kyc?.submittedAt || null,
     };
   }),
 });
