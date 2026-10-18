@@ -128,7 +128,7 @@
 .animate-treasury-ticker {
   display: flex;
   width: max-content;
-  animation: ticker-slide 35s linear infinite;
+  animation: ticker-slide 85s linear infinite;
   will-change: transform;
 }
 
