@@ -375,39 +375,83 @@ export default function Dashboard() {
     }
   };
 
+  const currentRates =
+    marketRates.data?.rates && marketRates.data.rates.length > 0
+      ? marketRates.data.rates
+      : [
+          { symbol: "EUR/USD", rate: 1.0845, change: "+0.24%", up: true },
+          { symbol: "GBP/USD", rate: 1.298, change: "+0.18%", up: true },
+          { symbol: "USD/CHF", rate: 0.8842, change: "-0.09%", up: false },
+          { symbol: "USD/JPY", rate: 154.22, change: "-0.31%", up: false },
+          { symbol: "GOLD (XAU)", rate: 2748.5, change: "+1.15%", up: true },
+          { symbol: "SILVER (XAG)", rate: 31.84, change: "+0.62%", up: true },
+          { symbol: "US 10Y", rate: 4.21, change: "-0.04%", up: false },
+          { symbol: "BTC/USD", rate: 89450, change: "+3.40%", up: true },
+          { symbol: "ETH/USD", rate: 3340, change: "+2.15%", up: true },
+          { symbol: "BRENT CRUDE", rate: 74.28, change: "-0.45%", up: false },
+        ];
+
+  // Quadruple loop to guarantee seamless infinite scrolling on all screen widths
+  const tickerSequence = [...currentRates, ...currentRates];
+  const tickerLoop = [...tickerSequence, ...tickerSequence];
+
   return (
     <div className="min-h-screen bg-navy-panel text-foreground">
-      {/* 1. Global Market & Treasury Ribbon */}
-      <div className="border-b border-border bg-navy-deep/95 py-1.5 px-4 text-xs font-mono">
-        <div className="mx-auto flex max-w-7xl items-center justify-between overflow-x-auto whitespace-nowrap scrollbar-none gap-6 text-[11px]">
-          <div className="flex items-center gap-2 text-gold">
+      {/* 1. Global Market & Treasury Ribbon (Live Moving Ticker) */}
+      <div className="border-b border-border bg-navy-deep/95 py-1.5 px-3 sm:px-4 text-xs font-mono select-none overflow-hidden">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 text-[11px]">
+          {/* Docked Left: Live Badge */}
+          <div className="z-10 flex items-center gap-2 text-gold bg-navy-deep pr-3 shrink-0 shadow-[4px_0_12px_rgba(13,26,39,0.9)]">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
             </span>
-            <span className="font-semibold uppercase tracking-wider">Treasury Feed</span>
+            <span className="font-semibold uppercase tracking-wider text-[10px] sm:text-[11px] whitespace-nowrap">
+              Treasury Feed
+            </span>
+            <span className="h-3 w-px bg-border/80 ml-1 hidden sm:block" />
           </div>
 
-          <div className="flex items-center gap-6 divide-x divide-border">
-            {(marketRates.data?.rates ?? [
-              { symbol: "GOLD (XAU)", rate: 2748.5, change: "+1.15%", up: true },
-              { symbol: "EUR/USD", rate: 1.0845, change: "+0.24%", up: true },
-              { symbol: "USD/CHF", rate: 0.8842, change: "-0.09%", up: false },
-              { symbol: "US 10Y", rate: 4.21, change: "-0.04%", up: false },
-              { symbol: "BTC/USD", rate: 89450, change: "+3.40%", up: true },
-            ]).map((r) => (
-              <div key={r.symbol} className="pl-6 flex items-center gap-2">
-                <span className="text-muted-foreground">{r.symbol}</span>
-                <span className="font-medium text-cream">${r.rate.toLocaleString()}</span>
-                <span className={cn("text-[10px]", r.up ? "text-emerald-400" : "text-rose-400")}>
-                  {r.change}
-                </span>
-              </div>
-            ))}
+          {/* Scrolling Ticker Track */}
+          <div className="relative flex-1 overflow-hidden min-w-0">
+            {/* Subtle left & right gradient fade masks */}
+            <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-r from-navy-deep to-transparent" />
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-navy-deep to-transparent" />
+
+            <div className="animate-treasury-ticker flex items-center">
+              {tickerLoop.map((r, idx) => (
+                <div
+                  key={`${r.symbol}-${idx}`}
+                  className="px-5 py-0.5 flex items-center gap-2 shrink-0 border-r border-border/40 hover:bg-navy-panel/60 transition-colors cursor-default"
+                  title="Live Institutional Quote (Hover to pause)"
+                >
+                  <span className="text-muted-foreground/90 font-medium whitespace-nowrap">{r.symbol}</span>
+                  <span className="font-semibold text-cream tnum whitespace-nowrap">
+                    {typeof r.rate === "number" && r.rate < 10 && !r.symbol.includes("10Y")
+                      ? `$${r.rate.toFixed(4)}`
+                      : typeof r.rate === "number"
+                        ? `$${r.rate.toLocaleString()}`
+                        : r.rate}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] font-semibold flex items-center gap-0.5 whitespace-nowrap",
+                      r.up ? "text-emerald-400" : "text-rose-400",
+                    )}
+                  >
+                    <span>{r.up ? "▲" : "▼"}</span>
+                    <span>{r.change}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="text-[10px] text-muted-foreground uppercase tracking-widest hidden lg:block">
-            Fedwire: <span className="text-emerald-400">ACTIVE</span> · SWIFT: <span className="text-emerald-400">ONLINE</span>
+          {/* Docked Right: Fedwire & SWIFT Status */}
+          <div className="z-10 bg-navy-deep pl-3 shrink-0 hidden lg:flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-widest border-l border-border/80 shadow-[-4px_0_12px_rgba(13,26,39,0.9)]">
+            <span>Fedwire:</span> <span className="text-emerald-400 font-semibold">ACTIVE</span>
+            <span className="text-border">·</span>
+            <span>SWIFT:</span> <span className="text-emerald-400 font-semibold">ONLINE</span>
           </div>
         </div>
       </div>

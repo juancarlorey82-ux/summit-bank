@@ -116,6 +116,26 @@
   animation: seal-rotate 22s linear infinite;
 }
 
+@keyframes ticker-slide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-treasury-ticker {
+  display: flex;
+  width: max-content;
+  animation: ticker-slide 35s linear infinite;
+  will-change: transform;
+}
+
+.animate-treasury-ticker:hover {
+  animation-play-state: paused;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

@@ -476,6 +476,28 @@
       "deliveryOption": "Zurich Segregated Vault Custody",
       "appliedAt": "2026-10-15T10:12:58.148Z",
       "createdAt": "2026-10-15T10:12:58.148Z"
+    },
+    {
+      "id": 6,
+      "userId": 2,
+      "accountId": 2,
+      "cardNumber": "4892 •••• •••• 3909",
+      "fullNumber": "4892358646423909",
+      "cardHolder": "AVA WHITFIELD",
+      "expiry": "10/30",
+      "cvv": "758",
+      "tier": "Titanium Black",
+      "type": "virtual",
+      "status": "pending_approval",
+      "spendingLimit": 100000,
+      "spendingCurrent": 0,
+      "isContactless": true,
+      "isInternational": true,
+      "applicationNote": "Executive collateral allocation",
+      "requiredHistoryPosition": "Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "deliveryOption": "Zurich Segregated Vault Custody",
+      "appliedAt": "2026-10-18T07:57:59.893Z",
+      "createdAt": "2026-10-18T07:57:59.893Z"
     }
   ],
   "vaults": [
@@ -517,6 +539,15 @@
     }
   ],
   "activityLogs": [
+    {
+      "actorId": 2,
+      "actorName": "Ava Whitfield",
+      "action": "Luxury Card Application Submitted",
+      "category": "card_management",
+      "details": "Applied for Titanium Black (virtual) · Requested Limit: $100,000 · Standing: Sovereign Reserve Qualified ($301,275 Liquid Assets · 11 Settled Transactions)",
+      "id": 15,
+      "timestamp": "2026-10-18T07:57:59.897Z"
+    },
     {
       "actorId": 2,
       "actorName": "Ava Whitfield",
