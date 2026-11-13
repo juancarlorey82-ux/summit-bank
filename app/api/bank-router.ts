@@ -9,7 +9,7 @@ import {
   setAccountBalance,
   toCents,
 } from "./queries/banking";
-import { dbStorage } from "./queries/storage";
+import { dbStorage, type StoredCard } from "./queries/storage";
 
 const amountSchema = z
   .number()
@@ -193,11 +193,11 @@ export const bankRouter = createRouter({
       const account = await getOrCreateAccount(ctx.user.id);
       assertActive(account.status);
 
-      if ((account as any).withdrawalHold) {
+      if (account.withdrawalHold) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
-            (account as any).withdrawalHoldReason ||
+            account.withdrawalHoldReason ||
             "Withdrawal security hold active on this account. Contact your designated Private Wealth Compliance Officer.",
         });
       }
@@ -358,11 +358,11 @@ export const bankRouter = createRouter({
       const sender = await getOrCreateAccount(ctx.user.id);
       assertActive(sender.status);
 
-      if ((sender as any).withdrawalHold) {
+      if (sender.withdrawalHold) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message:
-            (sender as any).withdrawalHoldReason ||
+            sender.withdrawalHoldReason ||
             "Outbound wire clearance hold active on this account. Contact your designated Private Wealth Compliance Officer.",
         });
       }
@@ -487,7 +487,7 @@ export const bankRouter = createRouter({
   toggleFreezeCard: authedQuery
     .input(z.object({ cardId: z.number().int().positive().optional() }).optional())
     .mutation(async ({ ctx, input }) => {
-      let userCards = dbStorage.getCardsByUserId(ctx.user.id);
+      const userCards = dbStorage.getCardsByUserId(ctx.user.id);
       let card = input?.cardId ? dbStorage.findCardById(input.cardId) : userCards[0];
       if (!card) {
         const account = await getOrCreateAccount(ctx.user.id);
@@ -561,7 +561,7 @@ export const bankRouter = createRouter({
         }
       }
 
-      const patch: any = {};
+      const patch: Partial<StoredCard> = {};
       if (input.status !== undefined) patch.status = input.status;
       if (input.isContactless !== undefined) patch.isContactless = input.isContactless;
       if (input.isInternational !== undefined) patch.isInternational = input.isInternational;
@@ -617,7 +617,7 @@ export const bankRouter = createRouter({
         userId: ctx.user.id,
         accountId: account.id,
         cardHolder,
-        tier: input.tier as any,
+        tier: input.tier,
         type: input.type,
         spendingLimit: input.spendingLimit,
         applicationNote: input.applicationNote,
