@@ -6,6 +6,7 @@
     "dev": "npm --prefix app run dev",
     "build": "npm --prefix app run build",
     "start": "npm --prefix app run start",
-    "check": "npm --prefix app run check"
+    "check": "npm --prefix app run check",
+    "postinstall": "npm --prefix app install"
   }
 }
