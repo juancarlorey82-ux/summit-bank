@@ -1,0 +1,5 @@
+# Prevent Vercel from treating the Hono/tRPC server files as serverless functions.
+# These are bundled by esbuild into dist/boot.js and are NOT Vercel API routes.
+app/api/
+app/node_modules/
+node_modules/
